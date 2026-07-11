@@ -1,5 +1,6 @@
 MAD22/
 MAD22.zip
+*.zip
 hcml_project/outputs/
 hcml_project/embeddings/
 hcml_project/metadata/*_aligned.csv

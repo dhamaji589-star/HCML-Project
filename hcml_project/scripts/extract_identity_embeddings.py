@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import sys
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -113,11 +115,28 @@ def load_model(architecture: str, weights_path: Path, device: torch.device) -> t
 
     model_class = import_backbone(architecture)
     model = model_class(num_features=512, dropout=0.0)
-    state_dict = torch.load(weights_path, map_location=device)
+    state_dict = load_state_dict(weights_path, device)
     model.load_state_dict(state_dict)
     model.to(device)
     model.eval()
     return model
+
+
+def load_state_dict(weights_path: Path, device: torch.device):
+    if weights_path.suffix.lower() != ".zip":
+        return torch.load(weights_path, map_location=device)
+
+    with zipfile.ZipFile(weights_path) as archive:
+        candidates = [
+            name
+            for name in archive.namelist()
+            if name.lower().endswith((".pth", ".pt", ".ckpt"))
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                f"Expected exactly one model file inside {weights_path}, found {len(candidates)}."
+            )
+        return torch.load(io.BytesIO(archive.read(candidates[0])), map_location=device)
 
 
 def load_image_tensor(path: Path) -> torch.Tensor:

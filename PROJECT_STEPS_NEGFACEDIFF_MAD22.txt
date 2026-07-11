@@ -542,7 +542,7 @@ Immediate next actions
    - pretrained autoencoder weights
    - identity contexts
    - generated datasets
-   - FR model weights
+   - any additional FR or ElasticFace/ElasticCos weights
 
    We do not necessarily need all generated datasets, but we do need the model
    assets required for sampling and embedding extraction.
@@ -555,14 +555,50 @@ Immediate next actions
    The repo README says these come from the pretrained FFHQ256 latent diffusion
    autoencoder.
 
-4. Find or download the identity embedding model weights.
+4. Identity embedding / face-recognition weights.
 
-   Best candidate from the repo README:
+   Newly downloaded and verified:
+
+     FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip
+       contains FRmodel_FarNeg_CASIA/42000backbone.pth
+
+     FRmodel_FarNegAdaptive_CASIA-20260711T132038Z-2-001.zip
+       contains FRmodel_FarNegAdaptive_CASIA/32301backbone.pth
+
+   Both are valid IResNet-50 face-recognition models with 512-dimensional
+   output embeddings. They can be loaded with:
+
+     --architecture iresnet50
+
+   Example:
+
+     python hcml_project/scripts/extract_identity_embeddings.py ^
+       --weights-path FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip ^
+       --architecture iresnet50 ^
+       --device cpu
+
+   This was tested on the smoke subset and produced 22 embeddings.
+
+   Important beginner note:
+
+     A face-recognition model maps a face image to a number vector, for example
+     a 512-number vector. Two faces of the same identity should have similar
+     vectors. We use these vectors in two ways:
+
+       - as identity context for NegFaceDiff sampling
+       - as evaluation features to check whether the generated face is closer
+         to hidden identity B or known identity A
+
+   Remaining question:
+
+   The NegFaceDiff README also mentions ElasticFace/ElasticCos:
 
      ElasticCos.pth
 
-   This is needed to extract identity embeddings compatible with the diffusion
-   model context space.
+   The new FRmodel weights are usable, but we still need to confirm whether
+   they are the exact embedding space expected by the DM_CASIA_cpd25 diffusion
+   checkpoint. If the supervisor provides ElasticCos.pth, we should test that
+   too and use whichever model matches the diffusion checkpoint setup.
 
 5. Once model assets are complete, implement the first local/Kaggle scripts:
 
@@ -591,14 +627,27 @@ Ready:
       ema_averaged_model.ckpt
       model.ckpt
       optimization.ckpt
+  - FRmodel_FarNeg_CASIA is present and verified as an IResNet-50 model.
+  - FRmodel_FarNegAdaptive_CASIA is present and verified as an IResNet-50 model.
+  - The local embedding extractor can load these FR models directly from the
+    zip file.
+  - Smoke embedding extraction succeeded for 22 aligned images.
 
 Not fully ready:
 
   - latent autoencoder state dicts are not present locally.
-  - identity embedding model weights are not present locally.
+  - exact diffusion-conditioning identity model still needs confirmation
+    because the repo also references ElasticCos.pth.
 
 Therefore:
 
-  We can start writing project-specific metadata/evaluation code now.
-  A full generation run will need the latent autoencoder weights and a
-  compatible identity embedding model.
+  We can run metadata creation, image alignment, and identity embedding
+  extraction now.
+
+  A full diffusion image-generation run still needs:
+
+    first_stage_encoder_state_dict.pt
+    first_stage_decoder_state_dict.pt
+
+  These are the latent autoencoder weights used to encode/decode images around
+  the diffusion model.

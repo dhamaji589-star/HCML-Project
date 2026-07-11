@@ -284,7 +284,51 @@ compatible face-recognition weights, likely:
 ElasticCos.pth
 ```
 
-Real extraction command, once weights are available:
+Newly downloaded FR checkpoints:
+
+```text
+FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip
+FRmodel_FarNegAdaptive_CASIA-20260711T132038Z-2-001.zip
+```
+
+These zip files contain valid IResNet-50 backbone weights:
+
+```text
+FRmodel_FarNeg_CASIA/42000backbone.pth
+FRmodel_FarNegAdaptive_CASIA/32301backbone.pth
+```
+
+They can be loaded with:
+
+```text
+--architecture iresnet50
+```
+
+The extractor can read these weights directly from the zip file. Example:
+
+```bash
+python hcml_project/scripts/extract_identity_embeddings.py \
+  --weights-path FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip \
+  --architecture iresnet50 \
+  --device cpu
+```
+
+Local smoke-test result with `FRmodel_FarNeg_CASIA`:
+
+```text
+embeddings extracted: 22
+embedding dimension:  512
+```
+
+Important distinction:
+
+These FR models are useful for extracting/evaluating identity embeddings, but
+we still need to confirm whether they are the exact embedding model expected by
+the diffusion model conditioning space. The diffusion training config says it
+was trained with precomputed CASIA embeddings, and the NegFaceDiff README also
+mentions ElasticFace/ElasticCos.
+
+If we later get `ElasticCos.pth`, the likely command is:
 
 ```bash
 python hcml_project/scripts/extract_identity_embeddings.py \

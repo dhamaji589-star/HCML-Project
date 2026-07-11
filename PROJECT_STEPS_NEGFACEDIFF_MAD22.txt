@@ -1,0 +1,604 @@
+HCML Project Steps: Hidden Identity Recovery with NegFaceDiff / AdaptDiff
+=======================================================================
+
+Current goal
+------------
+
+We want to test whether negative identity-conditioned diffusion can recover
+the hidden second identity from a face morph.
+
+For one morph image:
+
+  M_AB = morph containing identity A and identity B
+  A    = known live/source identity
+  B    = hidden identity we want to recover
+
+The core experiment is:
+
+  positive condition = embedding(M_AB)
+  negative condition = embedding(A)
+  generated output   = estimate of B
+
+Then we evaluate whether the generated output is closer to B than to A.
+
+
+Repository and data roles
+-------------------------
+
+1. NegFaceDiff/
+
+   This is the main codebase we will use.
+
+   Important files:
+
+   - sample.py
+     Loads the pretrained diffusion model and generates images.
+
+   - diffusion/ddpm.py
+     Contains the actual NegFaceDiff / AdaptDiff guidance formula.
+
+   - models/diffusion/unet.py
+     Defines the U-Net neural network used inside the diffusion model.
+
+   - models/autoencoder/
+     Used when the diffusion model works in latent space.
+
+   - MTCNN_alignment.py and utils/alignment/
+     Useful for face alignment.
+
+2. MAD22/
+
+   This is the dataset we will use first.
+
+   Important folders:
+
+   - MAD22/original_sorted/BonaFide
+     Source / bona fide identity images.
+
+   - MAD22/original_sorted/OpenCV
+     First morphing method to use, as supervisor suggested.
+
+   OpenCV filenames encode the two source identities:
+
+     001_08-vs-010_08.jpg
+
+   This means:
+
+     morph   = OpenCV/001_08-vs-010_08.jpg
+     sourceA = BonaFide/001_08.jpg
+     sourceB = BonaFide/010_08.jpg
+
+   Local OpenCV status:
+
+     total OpenCV morphs:                 741
+     morphs with both sources available:  604
+     possible recovery trials:           1208
+
+   Each usable morph gives two trials:
+
+     Trial 1: M_AB + A -> recover B
+     Trial 2: M_AB + B -> recover A
+
+3. SYN-MAD-2022/
+
+   This folder only contains README.md locally.
+   Use it for benchmark description, landmark format, and citation.
+
+4. SMDD-Synthetic-Face-Morphing-Attack-Detection-Development-dataset/
+
+   This is a morphing attack detector repo.
+   It classifies images as bona fide or attack.
+
+   It is not the main hidden identity recovery method.
+   We can treat it as optional background or an optional MAD baseline later.
+
+
+Downloaded diffusion model zip inspection
+-----------------------------------------
+
+Downloaded files:
+
+  C:\Users\dhama\Downloads\DM_CASIA_cpd25-20260709T144335Z-2-001.zip
+  C:\Users\dhama\Downloads\DM_CASIA_cpd25-20260709T132139Z-2-002.zip
+
+Combined contents found:
+
+  DM_CASIA_cpd25/.hydra/config.yaml
+  DM_CASIA_cpd25/.hydra/hydra.yaml
+  DM_CASIA_cpd25/.hydra/overrides.yaml
+  DM_CASIA_cpd25/checkpoints/ema_averaged_model.ckpt
+  DM_CASIA_cpd25/checkpoints/model.ckpt
+  DM_CASIA_cpd25/checkpoints/optimization.ckpt
+
+This is the correct pretrained diffusion model folder structure expected by
+NegFaceDiff/sample.py.
+
+The most important files are:
+
+  .hydra/config.yaml
+    This tells sample.py how to reconstruct the diffusion model architecture.
+
+  checkpoints/ema_averaged_model.ckpt
+    This is the pretrained diffusion model checkpoint we should use for
+    sampling.
+
+The extracted config confirms:
+
+  latent_diffusion: true
+  constants.image_size: 128
+  constants.input_channels: 3
+  model.condition_type: CA
+  model.context_input_channels: 512
+  model.context_dropout_probability: 0.25
+  diffusion.T: 1000
+  diffusion.schedule_type: linear
+
+Important: the two DM_CASIA zip files do not contain the latent autoencoder
+weights expected by
+sample.py:
+
+  first_stage_encoder_state_dict.pt
+  first_stage_decoder_state_dict.pt
+
+The README says these should come from the pretrained FFHQ256 latent diffusion
+autoencoder and should be placed under models/autoencoder or the path expected
+by sample.py.
+
+
+Important conclusion
+--------------------
+
+We now have the complete DM_CASIA_cpd25 pretrained diffusion checkpoint folder.
+
+This part is ready:
+
+  .hydra/config.yaml
+  .hydra/hydra.yaml
+  .hydra/overrides.yaml
+  checkpoints/ema_averaged_model.ckpt
+  checkpoints/model.ckpt
+  checkpoints/optimization.ckpt
+
+Still needed before full image generation:
+
+  first_stage_encoder_state_dict.pt
+  first_stage_decoder_state_dict.pt
+
+These are needed because the downloaded model was trained as a latent diffusion
+model:
+
+  latent_diffusion: true
+
+
+What the downloaded diffusion model does
+----------------------------------------
+
+The diffusion model is a face generator.
+
+It starts from random noise and gradually denoises it into a face image.
+
+Because it is identity-conditioned, it receives a 512-dimensional identity
+embedding/context vector. The generated face should resemble that identity.
+
+NegFaceDiff / AdaptDiff do not train a new generator for our project.
+They reuse this pretrained generator and change the sampling guidance.
+
+The core formula in diffusion/ddpm.py is:
+
+  eps = (1 + w) * eps_pos - w * eps_neg
+
+Meaning:
+
+  eps_pos = model prediction with the positive identity context
+  eps_neg = model prediction with the negative identity context
+  w       = negative guidance strength
+
+For our project:
+
+  eps_pos uses embedding(M_AB)
+  eps_neg uses embedding(A)
+
+
+Supervisor-required settings
+----------------------------
+
+1. NegFaceDiff setting:
+
+   adapt = false
+   weight = 0.5
+
+   Config equivalent:
+
+     neg_prompt:
+       w: 0.5
+       is_adaptive_w: false
+
+2. AdaptDiff setting:
+
+   adapt = true
+   weight = 1
+
+   Config equivalent:
+
+     neg_prompt:
+       w: 1.0
+       is_adaptive_w: true
+
+
+Major adaptation we need to implement
+-------------------------------------
+
+The original repo normally samples from a context dictionary and chooses
+negative contexts automatically by methods such as:
+
+  fc   = farthest context
+  cc   = closest context
+  mc   = median context
+  rand = random context
+
+Our project needs explicit paired contexts:
+
+  positive context = embedding of morph image M_AB
+  negative context = embedding of known image A
+  target context   = embedding of hidden image B, for evaluation only
+
+So we will likely create a new project-specific sampling wrapper instead of
+using sample.py exactly as-is.
+
+The wrapper should still reuse:
+
+  - checkpoint/model loading from sample.py
+  - diffusion sampling functions from diffusion/ddpm.py
+  - U-Net architecture from models/diffusion/unet.py
+  - latent decoder if latent_diffusion is true
+
+
+Files/data still needed before full run
+---------------------------------------
+
+1. Complete DM_CASIA_cpd25 folder
+
+   This is now available across the two downloaded zip parts.
+
+   Required files found:
+
+     .hydra/config.yaml
+     .hydra/hydra.yaml
+     .hydra/overrides.yaml
+     checkpoints/ema_averaged_model.ckpt
+     checkpoints/model.ckpt
+     checkpoints/optimization.ckpt
+
+2. Latent autoencoder weights
+
+   Needed if latent_diffusion is true, which it likely is.
+
+   Expected by current sample.py as:
+
+     ./neg_prompt/models/autoencoder/first_stage_encoder_state_dict.pt
+     ./neg_prompt/models/autoencoder/first_stage_decoder_state_dict.pt
+
+   The repo README says these come from the pretrained FFHQ256 LDM by Rombach
+   et al.
+
+3. Identity embedding model
+
+   We need a face recognition model to extract 512-dimensional embeddings from:
+
+     morph image M_AB
+     source image A
+     source image B
+     generated image G
+
+   Best match is likely ElasticFace-Cos because the repo refers to ElasticFace
+   embeddings and ElasticCos.pth.
+
+   The README says ElasticFace-Cos weights should be placed under:
+
+     output/ElasticCos.pth
+
+   This is especially important because the diffusion model was trained with a
+   specific embedding space. If we use a different face recognition embedding
+   model, the context vectors may not match the model's training distribution.
+
+
+Kaggle project setup plan
+-------------------------
+
+Step 1: Create a Kaggle notebook with GPU enabled
+
+Use a GPU runtime. CPU will be too slow and several scripts assume CUDA.
+
+Step 2: Upload or add datasets to Kaggle
+
+Add:
+
+  - NegFaceDiff code
+  - MAD22 dataset or at least OpenCV + BonaFide folders
+  - DM_CASIA_cpd25 checkpoint folder
+  - autoencoder weights
+  - identity embedding model weights
+
+Step 3: Install dependencies
+
+Expected Python packages:
+
+  torch
+  torchvision
+  pytorch-lightning
+  hydra-core
+  omegaconf
+  numpy
+  pandas
+  pillow
+  opencv-python
+  scikit-image
+  scikit-learn
+  facenet-pytorch
+  tqdm
+  matplotlib
+
+Step 4: Verify the checkpoint folder
+
+The folder should look like:
+
+  DM_CASIA_cpd25/
+    .hydra/
+      config.yaml
+      hydra.yaml
+    checkpoints/
+      ema_averaged_model.ckpt
+      model.ckpt
+
+With both downloaded zip parts, this requirement is satisfied.
+
+Step 5: Verify autoencoder files
+
+The sampling code expects:
+
+  first_stage_config.yaml
+  first_stage_encoder_state_dict.pt
+  first_stage_decoder_state_dict.pt
+
+Step 6: Build OpenCV metadata CSV
+
+For each OpenCV morph filename:
+
+  001_08-vs-010_08.jpg
+
+create two rows:
+
+  morph_path,known_path,hidden_path,morph_method,direction
+
+Example:
+
+  MAD22/original_sorted/OpenCV/001_08-vs-010_08.jpg,
+  MAD22/original_sorted/BonaFide/001_08.jpg,
+  MAD22/original_sorted/BonaFide/010_08.jpg,
+  OpenCV,
+  A_to_B
+
+  MAD22/original_sorted/OpenCV/001_08-vs-010_08.jpg,
+  MAD22/original_sorted/BonaFide/010_08.jpg,
+  MAD22/original_sorted/BonaFide/001_08.jpg,
+  OpenCV,
+  B_to_A
+
+Only keep rows where both source images exist.
+
+Step 7: Start with a tiny smoke-test subset
+
+Use only 5 to 20 morphs first.
+
+This checks:
+
+  - paths are correct
+  - alignment works
+  - embeddings can be extracted
+  - diffusion sampling runs
+  - output images are saved
+  - evaluation code works
+
+Step 8: Align images
+
+We need consistent face crops for embedding extraction.
+
+Use ArcFace-style 112x112 alignment for identity embeddings.
+
+For OpenCV morphs, provided landmark files are not available locally, so use
+MTCNN or another face detector to get landmarks.
+
+Step 9: Extract identity embeddings
+
+For each metadata row, compute:
+
+  e_M = embedding(morph image)
+  e_A = embedding(known image)
+  e_B = embedding(hidden image)
+
+Use e_M and e_A for generation.
+Use e_B only for evaluation.
+
+Step 10: Run NegFaceDiff
+
+Use:
+
+  positive context = e_M
+  negative context = e_A
+  w = 0.5
+  is_adaptive_w = false
+
+Save generated output as:
+
+  outputs/negfacediff/opencv/<trial_id>.png
+
+Step 11: Run AdaptDiff
+
+Use:
+
+  positive context = e_M
+  negative context = e_A
+  w = 1.0
+  is_adaptive_w = true
+
+Save generated output as:
+
+  outputs/adaptdiff/opencv/<trial_id>.png
+
+Step 12: Extract embeddings from generated images
+
+For every generated image G:
+
+  e_G = embedding(G)
+
+Step 13: Compute similarity metrics
+
+For each trial:
+
+  sim_to_hidden = cosine(e_G, e_B)
+  sim_to_known  = cosine(e_G, e_A)
+  margin        = sim_to_hidden - sim_to_known
+
+Success condition:
+
+  sim_to_hidden > sim_to_known
+
+Step 14: Compute baselines
+
+Baseline 1: Morph embedding only
+
+  query = e_M
+
+Baseline 2: Embedding arithmetic
+
+  query = normalize(2 * e_M - e_A)
+
+Compare these against:
+
+  NegFaceDiff
+  AdaptDiff
+
+Step 15: Gallery retrieval evaluation
+
+Create a gallery from all available BonaFide source embeddings.
+
+For each query:
+
+  rank all gallery embeddings by cosine similarity
+  find rank of hidden identity B
+
+Report:
+
+  Top-1
+  Top-5
+  Top-10
+  mean rank
+
+Step 16: Qualitative visualization
+
+For selected examples, show:
+
+  known image A
+  morph M_AB
+  hidden target B
+  NegFaceDiff output
+  AdaptDiff output
+
+Also include failure cases.
+
+Step 17: Scale from smoke test to OpenCV full subset
+
+After the tiny subset works:
+
+  run all 604 usable OpenCV morphs
+  run both directions
+  total expected trials = 1208
+
+Step 18: Extend to other morphing methods only after OpenCV works
+
+Later methods:
+
+  FaceMorpher
+  Webmorph
+  MIPGAN_I
+  MIPGAN_II
+
+
+Immediate next actions
+----------------------
+
+1. Extract both DM_CASIA_cpd25 zip parts into the same location.
+
+   They must merge into one folder:
+
+     DM_CASIA_cpd25/
+       .hydra/
+       checkpoints/
+
+   Do not keep the two zip parts as separate folders.
+
+2. Check whether the Drive folders "NegFaceDiff" or "AdaptDiff" contain:
+
+   - pretrained autoencoder weights
+   - identity contexts
+   - generated datasets
+   - FR model weights
+
+   We do not necessarily need all generated datasets, but we do need the model
+   assets required for sampling and embedding extraction.
+
+3. Find or download the latent autoencoder weights:
+
+     first_stage_encoder_state_dict.pt
+     first_stage_decoder_state_dict.pt
+
+   The repo README says these come from the pretrained FFHQ256 latent diffusion
+   autoencoder.
+
+4. Find or download the identity embedding model weights.
+
+   Best candidate from the repo README:
+
+     ElasticCos.pth
+
+   This is needed to extract identity embeddings compatible with the diffusion
+   model context space.
+
+5. Once model assets are complete, implement the first local/Kaggle scripts:
+
+   - build_opencv_metadata.py
+   - extract_identity_embeddings.py
+   - sample_paired_negfacediff.py
+   - evaluate_recovery.py
+
+6. Keep the first run tiny.
+
+   Start with 5 to 20 OpenCV morphs, not the full dataset.
+
+
+Current readiness status
+------------------------
+
+Ready:
+
+  - NegFaceDiff code is present locally.
+  - MAD22 OpenCV and BonaFide data are present locally.
+  - DM_CASIA_cpd25 checkpoint folder is complete across the two downloaded
+    zip parts:
+      .hydra/config.yaml
+      .hydra/hydra.yaml
+      .hydra/overrides.yaml
+      ema_averaged_model.ckpt
+      model.ckpt
+      optimization.ckpt
+
+Not fully ready:
+
+  - latent autoencoder state dicts are not present locally.
+  - identity embedding model weights are not present locally.
+
+Therefore:
+
+  We can start writing project-specific metadata/evaluation code now.
+  A full generation run will need the latent autoencoder weights and a
+  compatible identity embedding model.

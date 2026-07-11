@@ -1,1 +1,6 @@
 MAD22/
+MAD22.zip
+hcml_project/outputs/
+hcml_project/metadata/*_aligned.csv
+__pycache__/
+*.pyc

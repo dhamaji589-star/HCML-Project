@@ -1,0 +1,13 @@
+pillow
+numpy
+opencv-python
+torch
+torchvision
+facenet-pytorch
+tqdm
+pandas
+scikit-learn
+scikit-image
+hydra-core
+omegaconf
+pytorch-lightning

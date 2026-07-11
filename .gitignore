@@ -5,5 +5,6 @@ hcml_project/outputs/
 hcml_project/embeddings/
 hcml_project/metadata/*_aligned.csv
 hcml_project/metadata/*_embeddings.csv
+hcml_project/metadata/*_baseline_eval.csv
 __pycache__/
 *.pyc

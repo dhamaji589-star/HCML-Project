@@ -342,7 +342,86 @@ The script saves real embeddings to:
 hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
 ```
 
+### 6. Evaluate the embedding baseline
+
+Script:
+
+```bash
+python hcml_project/scripts/evaluate_embedding_baseline.py
+```
+
+Input:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_trials.csv
+hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
+hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+```
+
+Output:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_baseline_eval.csv
+```
+
+What this step does:
+
+For every directed trial, it compares:
+
+```text
+cosine(embedding(morph), embedding(known identity A))
+cosine(embedding(morph), embedding(hidden identity B))
+```
+
+Simple example:
+
+```text
+sim_morph_known  = 0.70
+sim_morph_hidden = 0.82
+
+margin_hidden_minus_known = 0.82 - 0.70 = 0.12
+```
+
+In this example, the morph is closer to the hidden identity according to the
+face-recognition model.
+
+Why this step matters:
+
+This is not the final project result because we have not generated recovered
+faces yet. It is a sanity check that confirms:
+
+```text
+trial metadata -> aligned images -> embeddings -> similarity evaluation
+```
+
+are connected correctly.
+
+Current smoke-test result with `FRmodel_FarNeg_CASIA`:
+
+```text
+Trials evaluated:       20
+Gallery identities:     12
+Closer to hidden:       10/20
+Hidden retrieval top-1: 10/20
+Hidden retrieval top-5: 18/20
+Mean hidden rank:       2.45
+```
+
+The `10/20` top-1 result is reasonable for this smoke setup. Each morph is
+used twice:
+
+```text
+M_AB + A -> hidden B
+M_AB + B -> hidden A
+```
+
+If the raw morph embedding is closer to identity A, then the `hidden A`
+direction succeeds and the `hidden B` direction fails. Diffusion recovery is
+the later step that should use negative guidance to push the generated image
+away from the known identity and toward the hidden one.
+
 ## Next planned steps
 
-1. Add paired NegFaceDiff / AdaptDiff sampling.
-2. Add similarity and retrieval evaluation.
+1. Locate/add the latent autoencoder weights needed by NegFaceDiff sampling.
+2. Add paired NegFaceDiff / AdaptDiff sampling.
+3. Reuse the similarity and retrieval evaluation logic on generated images.

@@ -1,6 +1,8 @@
 MAD22/
 MAD22.zip
 hcml_project/outputs/
+hcml_project/embeddings/
 hcml_project/metadata/*_aligned.csv
+hcml_project/metadata/*_embeddings.csv
 __pycache__/
 *.pyc

@@ -215,8 +215,90 @@ facenet-pytorch
 For the actual experiment, use `--detector mtcnn`, because it estimates facial
 landmarks and creates ArcFace-style 112x112 crops.
 
+### 5. Extract identity embeddings
+
+Script:
+
+```bash
+python hcml_project/scripts/extract_identity_embeddings.py --dry-run
+```
+
+Input:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_aligned.csv
+```
+
+Dry-run output:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
+```
+
+What an identity embedding is:
+
+An identity embedding is a vector representation of a face. In our case it
+should be 512 numbers. Two images of the same person should have similar
+vectors. Two different people should have less similar vectors.
+
+Simple example:
+
+```text
+image of A -> face recognition model -> e_A
+image of B -> face recognition model -> e_B
+
+cosine(e_A, e_B) high  = identities look similar to the model
+cosine(e_A, e_B) low   = identities look different to the model
+```
+
+Why this step matters:
+
+For generation:
+
+```text
+positive context = embedding(morph image M_AB)
+negative context = embedding(known identity A)
+```
+
+For evaluation:
+
+```text
+generated output G -> embedding e_G
+hidden target B    -> embedding e_B
+known source A     -> embedding e_A
+
+success if cosine(e_G, e_B) > cosine(e_G, e_A)
+```
+
+Current local status:
+
+```text
+python hcml_project/scripts/extract_identity_embeddings.py --dry-run
+```
+
+This validates the aligned image report and writes an embedding report, but it
+does not create real embeddings. That is intentional because we still need the
+compatible face-recognition weights, likely:
+
+```text
+ElasticCos.pth
+```
+
+Real extraction command, once weights are available:
+
+```bash
+python hcml_project/scripts/extract_identity_embeddings.py \
+  --weights-path output/ElasticCos.pth \
+  --architecture iresnet100
+```
+
+The script saves real embeddings to:
+
+```text
+hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+```
+
 ## Next planned steps
 
-1. Add identity embedding extraction.
-2. Add paired NegFaceDiff / AdaptDiff sampling.
-3. Add similarity and retrieval evaluation.
+1. Add paired NegFaceDiff / AdaptDiff sampling.
+2. Add similarity and retrieval evaluation.

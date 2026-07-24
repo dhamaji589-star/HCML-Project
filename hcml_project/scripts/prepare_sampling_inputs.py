@@ -91,6 +91,20 @@ def build_image_lookup(report_rows: list[dict[str, str]]) -> dict[str, str]:
     return lookup
 
 
+def read_embedding_model_name(report_rows: list[dict[str, str]]) -> str:
+    names = {
+        row.get("embedding_model_name", "unknown")
+        for row in report_rows
+        if row["embedding_status"] == "success"
+    }
+    if len(names) != 1:
+        raise ValueError(
+            "Expected exactly one embedding model name in the embedding report, "
+            f"found: {sorted(names)}"
+        )
+    return names.pop()
+
+
 def require_embedding(
     image_lookup: dict[str, str],
     embeddings: dict[str, np.ndarray],
@@ -111,6 +125,7 @@ def build_context_rows(
     trial_rows: list[dict[str, str]],
     image_lookup: dict[str, str],
     embeddings: dict[str, np.ndarray],
+    embedding_model_name: str,
 ) -> tuple[list[dict[str, str]], np.ndarray, np.ndarray, np.ndarray]:
     manifest_rows: list[dict[str, str]] = []
     positive_contexts = []
@@ -146,6 +161,7 @@ def build_context_rows(
                 "positive_embedding_key": positive_key,
                 "negative_embedding_key": negative_key,
                 "hidden_embedding_key": hidden_key,
+                "embedding_model_name": embedding_model_name,
             }
         )
 
@@ -171,6 +187,7 @@ def write_manifest(rows: list[dict[str, str]], path: Path) -> None:
         "positive_embedding_key",
         "negative_embedding_key",
         "hidden_embedding_key",
+        "embedding_model_name",
     ]
 
     with path.open("w", newline="", encoding="utf-8") as csv_file:
@@ -179,7 +196,7 @@ def write_manifest(rows: list[dict[str, str]], path: Path) -> None:
         writer.writerows(rows)
 
 
-def write_settings(output_dir: Path) -> None:
+def write_settings(output_dir: Path, embedding_model_name: str) -> None:
     for setting in SETTINGS:
         path = output_dir / f"{setting['name']}_sampling_settings.yaml"
         text = "\n".join(
@@ -192,6 +209,7 @@ def write_settings(output_dir: Path) -> None:
                 "positive_context: morph_embedding",
                 "negative_context: known_identity_embedding",
                 "hidden_context: hidden_identity_embedding_for_evaluation_only",
+                f"embedding_model_name: {embedding_model_name}",
                 "",
             ]
         )
@@ -205,9 +223,10 @@ def main() -> None:
     report_rows = read_csv(args.embedding_report_csv)
     embeddings = load_embeddings(args.embedding_npz)
     image_lookup = build_image_lookup(report_rows)
+    embedding_model_name = read_embedding_model_name(report_rows)
 
     manifest_rows, positive_contexts, negative_contexts, hidden_contexts = (
-        build_context_rows(trial_rows, image_lookup, embeddings)
+        build_context_rows(trial_rows, image_lookup, embeddings, embedding_model_name)
     )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -221,13 +240,14 @@ def main() -> None:
         hidden_contexts=hidden_contexts,
     )
     write_manifest(manifest_rows, manifest_csv)
-    write_settings(args.output_dir)
+    write_settings(args.output_dir, embedding_model_name)
 
     print(f"Trials prepared: {len(manifest_rows)}")
     print(f"Context dimension: {positive_contexts.shape[1]}")
     print(f"Positive contexts shape: {positive_contexts.shape}")
     print(f"Negative contexts shape: {negative_contexts.shape}")
     print(f"Hidden contexts shape: {hidden_contexts.shape}")
+    print(f"Embedding model: {embedding_model_name}")
     print(f"Output directory: {args.output_dir}")
 
 

@@ -4,6 +4,7 @@ MAD22.zip
 hcml_project/outputs/
 hcml_project/embeddings/
 hcml_project/sampling_inputs/
+hcml_project/model_assets/
 hcml_project/metadata/*_aligned.csv
 hcml_project/metadata/*_embeddings.csv
 hcml_project/metadata/*_baseline_eval.csv

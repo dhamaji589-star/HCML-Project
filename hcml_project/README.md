@@ -270,79 +270,73 @@ known source A     -> embedding e_A
 success if cosine(e_G, e_B) > cosine(e_G, e_A)
 ```
 
-Current local status:
+Correct model choice after supervisor clarification:
 
 ```text
-python hcml_project/scripts/extract_identity_embeddings.py --dry-run
+Identity contexts for generation: ElasticFaceArc
+Optional final cosine evaluation: ElasticFaceCos or another FR model
 ```
 
-This validates the aligned image report and writes an embedding report, but it
-does not create real embeddings. That is intentional because we still need the
-compatible face-recognition weights, likely:
+The temporary `FRmodel_FarNeg_CASIA` and `FRmodel_FarNegAdaptive_CASIA` files
+were useful for local smoke testing, but they are not the final identity
+context models for this project.
+
+Download the ElasticFace-Arc pretrained checkpoint from the official
+ElasticFace repository and keep it outside git, for example:
 
 ```text
-ElasticCos.pth
+hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth
 ```
 
-Newly downloaded FR checkpoints:
-
-```text
-FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip
-FRmodel_FarNegAdaptive_CASIA-20260711T132038Z-2-001.zip
-```
-
-These zip files contain valid IResNet-50 backbone weights:
-
-```text
-FRmodel_FarNeg_CASIA/42000backbone.pth
-FRmodel_FarNegAdaptive_CASIA/32301backbone.pth
-```
-
-They can be loaded with:
-
-```text
---architecture iresnet50
-```
-
-The extractor can read these weights directly from the zip file. Example:
+Expected final extraction command:
 
 ```bash
 python hcml_project/scripts/extract_identity_embeddings.py \
-  --weights-path FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip \
-  --architecture iresnet50 \
-  --device cpu
+  --weights-path hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth \
+  --architecture iresnet100 \
+  --embedding-model-name elasticface_arc \
+  --output-npz hcml_project/embeddings/mad22_opencv_smoke_elasticface_arc.npz \
+  --report-csv hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_embeddings.csv
 ```
 
-Local smoke-test result with `FRmodel_FarNeg_CASIA`:
-
-```text
-embeddings extracted: 22
-embedding dimension:  512
-```
-
-Important distinction:
-
-These FR models are useful for extracting/evaluating identity embeddings, but
-we still need to confirm whether they are the exact embedding model expected by
-the diffusion model conditioning space. The diffusion training config says it
-was trained with precomputed CASIA embeddings, and the NegFaceDiff README also
-mentions ElasticFace/ElasticCos.
-
-If we later get `ElasticCos.pth`, the likely command is:
+Useful local dry run before the weights are available:
 
 ```bash
 python hcml_project/scripts/extract_identity_embeddings.py \
-  --weights-path output/ElasticCos.pth \
-  --architecture iresnet100
+  --dry-run \
+  --embedding-model-name elasticface_arc \
+  --report-csv hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_embeddings.csv
 ```
 
-The script saves real embeddings to:
+The script saves real embeddings to an NPZ file. Every row in the report also
+stores the embedding model name so we can avoid mixing temporary smoke-test
+features with final ElasticFaceArc contexts.
+
+### 6. Check required model assets
+
+Script:
+
+```bash
+python hcml_project/scripts/check_required_assets.py
+```
+
+This checks whether the final-experiment assets are present:
 
 ```text
-hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+DM_CASIA diffusion checkpoint
+latent autoencoder config
+latent autoencoder encoder weights
+latent autoencoder decoder weights
+ElasticFaceArc weights
 ```
 
-### 6. Evaluate the embedding baseline
+Strict mode, useful in Kaggle before running expensive jobs:
+
+```bash
+python hcml_project/scripts/check_required_assets.py --strict
+```
+
+### 7. Evaluate the embedding sanity check
 
 Script:
 
@@ -396,7 +390,7 @@ trial metadata -> aligned images -> embeddings -> similarity evaluation
 
 are connected correctly.
 
-Current smoke-test result with `FRmodel_FarNeg_CASIA`:
+Current smoke-test result with the temporary FarNeg FR model:
 
 ```text
 Trials evaluated:       20
@@ -420,7 +414,10 @@ direction succeeds and the `hidden B` direction fails. Diffusion recovery is
 the later step that should use negative guidance to push the generated image
 away from the known identity and toward the hidden one.
 
-### 7. Prepare paired sampling inputs
+This is only a sanity check for our metadata/alignment/embedding plumbing. It
+is not the diffusion reconstruction baseline Eduarda mentioned.
+
+### 8. Prepare paired sampling inputs
 
 Script:
 
@@ -496,6 +493,8 @@ AdaptDiff:   weight = 1.0, adapt = true
 
 ## Next planned steps
 
-1. Locate/add the latent autoencoder weights needed by NegFaceDiff sampling.
-2. Add a project-specific sampler that reads `paired_contexts.npz`.
-3. Reuse the similarity and retrieval evaluation logic on generated images.
+1. Download/setup ElasticFaceArc and rerun embeddings.
+2. Download/setup the latent autoencoder weights needed by NegFaceDiff sampling.
+3. Add morph-derived noise generation with the 1000-step Markovian chain.
+4. Add a project-specific sampler that uses DDIM 200 steps from that morph-derived noise.
+5. Reuse the similarity and retrieval evaluation logic on generated images.

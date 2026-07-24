@@ -290,16 +290,20 @@ Files/data still needed before full run
      source image B
      generated image G
 
-   Best match is likely ElasticFace-Cos because the repo refers to ElasticFace
-   embeddings and ElasticCos.pth.
+   Supervisor clarification:
 
-   The README says ElasticFace-Cos weights should be placed under:
+   Use ElasticFaceArc for the identity contexts used by IDiff-Face,
+   NegFaceDiff, and AdaptDiff.
 
-     output/ElasticCos.pth
+   Do not use FRmodel_FarNeg_CASIA or FRmodel_FarNegAdaptive_CASIA for final
+   identity contexts. Those were only useful for smoke-testing our extractor.
 
-   This is especially important because the diffusion model was trained with a
-   specific embedding space. If we use a different face recognition embedding
-   model, the context vectors may not match the model's training distribution.
+   ElasticFaceCos is optional for final cosine-similarity evaluation, but it is
+   not the conditioning model.
+
+   Expected local path for the ElasticFaceArc checkpoint:
+
+     hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth
 
 
 Kaggle project setup plan
@@ -419,7 +423,23 @@ For each metadata row, compute:
 Use e_M and e_A for generation.
 Use e_B only for evaluation.
 
-Step 10: Evaluate the embedding baseline
+Final project requirement:
+
+  Extract these embeddings with ElasticFaceArc.
+
+  python hcml_project/scripts/extract_identity_embeddings.py ^
+    --weights-path hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth ^
+    --architecture iresnet100 ^
+    --embedding-model-name elasticface_arc ^
+    --output-npz hcml_project/embeddings/mad22_opencv_smoke_elasticface_arc.npz ^
+    --report-csv hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_embeddings.csv
+
+Temporary note:
+
+  Earlier FRmodel_FarNeg_CASIA outputs were only a local smoke test. They
+  should be regenerated with ElasticFaceArc before final experiments.
+
+Step 10: Evaluate the embedding sanity check
 
 Before running the diffusion model, check the raw morph embeddings.
 
@@ -457,7 +477,11 @@ Why this step matters:
   It proves that metadata, aligned images, embeddings, and cosine similarity
   evaluation are connected correctly before we spend time running diffusion.
 
-Current smoke-test result with FRmodel_FarNeg_CASIA:
+  This is not the diffusion-model reconstruction baseline. A diffusion
+  reconstruction baseline would mean reconstructing from noise and identity
+  condition without the negative context.
+
+Current smoke-test result with temporary FRmodel_FarNeg_CASIA:
 
   Trials evaluated:       20
   Gallery identities:     12
@@ -544,6 +568,12 @@ Supervisor settings written:
   NegFaceDiff: weight = 0.5, adapt = false
   AdaptDiff:   weight = 1.0, adapt = true
 
+Important:
+
+  Regenerate these sampling inputs after ElasticFaceArc embeddings are
+  available. The existing generated smoke files are not final experiment
+  inputs if they were created from temporary FRmodel embeddings.
+
 Step 12: Run NegFaceDiff
 
 Use:
@@ -556,6 +586,21 @@ Use:
 Save generated output as:
 
   outputs/negfacediff/opencv/<trial_id>.png
+
+Important correction from the supervisor:
+
+  The generation should not start from random noise.
+
+  It should start from noise obtained from the morphed sample:
+
+    morph image
+      -> latent autoencoder encoder
+      -> forward Markovian chain for 1000 steps
+      -> noisy morph latent
+      -> DDIM sampling with 200 steps
+
+  Use the same morph-derived starting noise for NegFaceDiff and AdaptDiff so
+  the comparison is fair.
 
 Step 13: Run AdaptDiff
 
@@ -682,27 +727,15 @@ Immediate next actions
 
 4. Identity embedding / face-recognition weights.
 
-   Newly downloaded and verified:
+   Final identity contexts must use ElasticFaceArc.
 
-     FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip
-       contains FRmodel_FarNeg_CASIA/42000backbone.pth
+   Expected path:
 
-     FRmodel_FarNegAdaptive_CASIA-20260711T132038Z-2-001.zip
-       contains FRmodel_FarNegAdaptive_CASIA/32301backbone.pth
+     hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth
 
-   Both are valid IResNet-50 face-recognition models with 512-dimensional
-   output embeddings. They can be loaded with:
+   Expected architecture:
 
-     --architecture iresnet50
-
-   Example:
-
-     python hcml_project/scripts/extract_identity_embeddings.py ^
-       --weights-path FRmodel_FarNeg_CASIA-20260711T131949Z-2-001.zip ^
-       --architecture iresnet50 ^
-       --device cpu
-
-   This was tested on the smoke subset and produced 22 embeddings.
+     iresnet100
 
    Important beginner note:
 
@@ -714,16 +747,10 @@ Immediate next actions
        - as evaluation features to check whether the generated face is closer
          to hidden identity B or known identity A
 
-   Remaining question:
+   The downloaded FRmodel_FarNeg_CASIA and FRmodel_FarNegAdaptive_CASIA
+   weights are not needed for final identity contexts.
 
-   The NegFaceDiff README also mentions ElasticFace/ElasticCos:
-
-     ElasticCos.pth
-
-   The new FRmodel weights are usable, but we still need to confirm whether
-   they are the exact embedding space expected by the DM_CASIA_cpd25 diffusion
-   checkpoint. If the supervisor provides ElasticCos.pth, we should test that
-   too and use whichever model matches the diffusion checkpoint setup.
+   ElasticFaceCos may be used later as an optional evaluation model.
 
 5. Once model assets are complete, implement the first local/Kaggle scripts:
 
@@ -752,22 +779,22 @@ Ready:
       ema_averaged_model.ckpt
       model.ckpt
       optimization.ckpt
-  - FRmodel_FarNeg_CASIA is present and verified as an IResNet-50 model.
-  - FRmodel_FarNegAdaptive_CASIA is present and verified as an IResNet-50 model.
-  - The local embedding extractor can load these FR models directly from the
-    zip file.
-  - Smoke embedding extraction succeeded for 22 aligned images.
+  - The local embedding extractor can load IResNet checkpoints and write model
+    names into the embedding report.
+  - Smoke embedding extraction succeeded for 22 aligned images with a temporary
+    FR model, proving the pipeline works.
 
 Not fully ready:
 
   - latent autoencoder state dicts are not present locally.
-  - exact diffusion-conditioning identity model still needs confirmation
-    because the repo also references ElasticCos.pth.
+  - ElasticFaceArc checkpoint is not present locally yet.
 
 Therefore:
 
-  We can run metadata creation, image alignment, and identity embedding
-  extraction now.
+  We can run metadata creation and image alignment now.
+
+  Final identity embedding extraction should be rerun after downloading
+  ElasticFaceArc.
 
   A full diffusion image-generation run still needs:
 

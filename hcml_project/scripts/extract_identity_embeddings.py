@@ -36,7 +36,12 @@ def parse_args() -> argparse.Namespace:
         "--weights-path",
         type=Path,
         default=Path(""),
-        help="Path to face-recognition model weights, e.g. ElasticCos.pth.",
+        help="Path to face-recognition model weights, e.g. ElasticFaceArc 295672backbone.pth.",
+    )
+    parser.add_argument(
+        "--embedding-model-name",
+        default="elasticface_arc",
+        help="Short name written to the report, e.g. elasticface_arc or elasticface_cos.",
     )
     parser.add_argument(
         "--architecture",
@@ -179,6 +184,7 @@ def write_report(
     report_csv: Path,
     extracted_keys: set[str],
     dry_run: bool,
+    embedding_model_name: str,
 ) -> None:
     report_csv.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
@@ -190,6 +196,7 @@ def write_report(
         "identity_ids",
         "embedding_key",
         "embedding_status",
+        "embedding_model_name",
     ]
 
     with report_csv.open("w", newline="", encoding="utf-8") as csv_file:
@@ -212,6 +219,7 @@ def write_report(
                     "identity_ids": row["identity_ids"],
                     "embedding_key": key,
                     "embedding_status": status,
+                    "embedding_model_name": embedding_model_name,
                 }
             )
 
@@ -225,7 +233,13 @@ def main() -> None:
         raise RuntimeError("No successful aligned images found in alignment CSV.")
 
     if args.dry_run:
-        write_report(rows, args.report_csv, extracted_keys=set(), dry_run=True)
+        write_report(
+            rows,
+            args.report_csv,
+            extracted_keys=set(),
+            dry_run=True,
+            embedding_model_name=args.embedding_model_name,
+        )
         print(f"Alignment CSV: {args.alignment_csv}")
         print(f"Successful aligned images: {len(rows)}")
         print("Dry run: embeddings were not extracted.")
@@ -238,11 +252,18 @@ def main() -> None:
 
     args.output_npz.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.output_npz, **embeddings)
-    write_report(rows, args.report_csv, set(embeddings), dry_run=False)
+    write_report(
+        rows,
+        args.report_csv,
+        set(embeddings),
+        dry_run=False,
+        embedding_model_name=args.embedding_model_name,
+    )
 
     print(f"Alignment CSV: {args.alignment_csv}")
     print(f"Device: {device}")
     print(f"Architecture: {args.architecture}")
+    print(f"Embedding model: {args.embedding_model_name}")
     print(f"Embeddings extracted: {len(embeddings)}")
     print(f"Embedding NPZ: {args.output_npz}")
     print(f"Embedding report CSV: {args.report_csv}")

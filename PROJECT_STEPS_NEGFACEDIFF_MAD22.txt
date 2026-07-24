@@ -478,7 +478,73 @@ Why 10/20 is understandable:
   diffusion step should use negative guidance to move away from the known
   identity and toward the hidden identity.
 
-Step 11: Run NegFaceDiff
+Step 11: Prepare paired sampling inputs
+
+Script:
+
+  python hcml_project/scripts/prepare_sampling_inputs.py
+
+Input files:
+
+  hcml_project/metadata/mad22_opencv_smoke_trials.csv
+  hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
+  hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+
+Output folder:
+
+  hcml_project/sampling_inputs/mad22_opencv_smoke/
+
+Output files:
+
+  paired_contexts.npz
+  paired_contexts_manifest.csv
+  negfacediff_sampling_settings.yaml
+  adaptdiff_sampling_settings.yaml
+
+What it prepares:
+
+  positive_contexts = embeddings of morph images
+  negative_contexts = embeddings of known identity images
+  hidden_contexts   = embeddings of hidden identity images
+
+Beginner example:
+
+  For this trial:
+
+    OpenCV_001_08_vs_010_08_A_to_B
+
+  the model should receive:
+
+    positive context = embedding of 001_08-vs-010_08.jpg
+    negative context = embedding of 001_08.jpg
+
+  and evaluation should keep:
+
+    hidden context = embedding of 010_08.jpg
+
+Why this step matters:
+
+  The original NegFaceDiff sampling script was designed around a list of
+  contexts and automatic choices like farthest or closest negative context.
+  Our project is more specific: for each MAD22 morph, the negative context is
+  not random. It is exactly the known/live identity A.
+
+  This script makes that pairing explicit and easy to inspect.
+
+Current smoke-test result:
+
+  Trials prepared: 20
+  Context dimension: 512
+  Positive contexts shape: (20, 512)
+  Negative contexts shape: (20, 512)
+  Hidden contexts shape: (20, 512)
+
+Supervisor settings written:
+
+  NegFaceDiff: weight = 0.5, adapt = false
+  AdaptDiff:   weight = 1.0, adapt = true
+
+Step 12: Run NegFaceDiff
 
 Use:
 
@@ -491,7 +557,7 @@ Save generated output as:
 
   outputs/negfacediff/opencv/<trial_id>.png
 
-Step 12: Run AdaptDiff
+Step 13: Run AdaptDiff
 
 Use:
 
@@ -504,13 +570,13 @@ Save generated output as:
 
   outputs/adaptdiff/opencv/<trial_id>.png
 
-Step 13: Extract embeddings from generated images
+Step 14: Extract embeddings from generated images
 
 For every generated image G:
 
   e_G = embedding(G)
 
-Step 14: Compute similarity metrics
+Step 15: Compute similarity metrics
 
 For each trial:
 
@@ -522,7 +588,7 @@ Success condition:
 
   sim_to_hidden > sim_to_known
 
-Step 15: Compute baselines
+Step 16: Compute baselines
 
 Baseline 1: Morph embedding only
 
@@ -537,7 +603,7 @@ Compare these against:
   NegFaceDiff
   AdaptDiff
 
-Step 16: Gallery retrieval evaluation
+Step 17: Gallery retrieval evaluation
 
 Create a gallery from all available BonaFide source embeddings.
 
@@ -553,7 +619,7 @@ Report:
   Top-10
   mean rank
 
-Step 17: Qualitative visualization
+Step 18: Qualitative visualization
 
 For selected examples, show:
 
@@ -565,7 +631,7 @@ For selected examples, show:
 
 Also include failure cases.
 
-Step 18: Scale from smoke test to OpenCV full subset
+Step 19: Scale from smoke test to OpenCV full subset
 
 After the tiny subset works:
 
@@ -573,7 +639,7 @@ After the tiny subset works:
   run both directions
   total expected trials = 1208
 
-Step 19: Extend to other morphing methods only after OpenCV works
+Step 20: Extend to other morphing methods only after OpenCV works
 
 Later methods:
 

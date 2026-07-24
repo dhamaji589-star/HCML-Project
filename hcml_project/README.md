@@ -420,8 +420,82 @@ direction succeeds and the `hidden B` direction fails. Diffusion recovery is
 the later step that should use negative guidance to push the generated image
 away from the known identity and toward the hidden one.
 
+### 7. Prepare paired sampling inputs
+
+Script:
+
+```bash
+python hcml_project/scripts/prepare_sampling_inputs.py
+```
+
+Input:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_trials.csv
+hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
+hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+```
+
+Output:
+
+```text
+hcml_project/sampling_inputs/mad22_opencv_smoke/
+```
+
+Files created:
+
+```text
+paired_contexts.npz
+paired_contexts_manifest.csv
+negfacediff_sampling_settings.yaml
+adaptdiff_sampling_settings.yaml
+```
+
+What this step does:
+
+For every directed trial, it prepares the three vectors we need:
+
+```text
+positive context = embedding(morph image M_AB)
+negative context = embedding(known identity A)
+hidden context   = embedding(hidden identity B)
+```
+
+The hidden context is saved for evaluation only. During generation, the model
+should use the morph embedding as the positive context and the known identity
+embedding as the negative context.
+
+Example:
+
+```text
+trial: OpenCV_001_08_vs_010_08_A_to_B
+known identity:  001_08
+hidden identity: 010_08
+
+positive context -> embedding of 001_08-vs-010_08.jpg
+negative context -> embedding of 001_08.jpg
+hidden context   -> embedding of 010_08.jpg
+```
+
+Current smoke-test result:
+
+```text
+Trials prepared: 20
+Context dimension: 512
+Positive contexts shape: (20, 512)
+Negative contexts shape: (20, 512)
+Hidden contexts shape:   (20, 512)
+```
+
+The two project settings from the supervisor are also written:
+
+```text
+NegFaceDiff: weight = 0.5, adapt = false
+AdaptDiff:   weight = 1.0, adapt = true
+```
+
 ## Next planned steps
 
 1. Locate/add the latent autoencoder weights needed by NegFaceDiff sampling.
-2. Add paired NegFaceDiff / AdaptDiff sampling.
+2. Add a project-specific sampler that reads `paired_contexts.npz`.
 3. Reuse the similarity and retrieval evaluation logic on generated images.

@@ -519,9 +519,78 @@ NegFaceDiff: weight = 0.5, adapt = false
 AdaptDiff:   weight = 1.0, adapt = true
 ```
 
+### 9. Run paired diffusion sampling
+
+Script:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py
+```
+
+What this step does:
+
+For each trial, it follows the supervisor-corrected generation flow:
+
+```text
+morph image
+  -> latent autoencoder encoder
+  -> 1000-step forward noising process
+  -> morph-derived noisy latent
+  -> DDIM reverse sampling
+  -> latent autoencoder decoder
+  -> generated recovered face
+```
+
+The script uses:
+
+```text
+positive context = ElasticFaceArc embedding of morph image
+negative context = ElasticFaceArc embedding of known identity
+```
+
+Smoke validation without reverse diffusion:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py \
+  --prepare-only \
+  --max-trials 1 \
+  --device cpu
+```
+
+Tiny local code-path test:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py \
+  --max-trials 1 \
+  --setting negfacediff \
+  --ddim-steps 1 \
+  --device cpu
+```
+
+This one-step command only checks that loading, noising, sampling, decoding,
+and image saving work. It is not a valid experiment result.
+
+Real smoke experiment on Kaggle/GPU:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py \
+  --max-trials 20 \
+  --setting both \
+  --ddim-steps 200 \
+  --device cuda
+```
+
+Outputs:
+
+```text
+hcml_project/outputs/generated_smoke_elasticface_arc/noisy_latents/
+hcml_project/outputs/generated_smoke_elasticface_arc/negfacediff/
+hcml_project/outputs/generated_smoke_elasticface_arc/adaptdiff/
+hcml_project/outputs/generated_smoke_elasticface_arc/sampling_report.csv
+```
+
 ## Next planned steps
 
-1. Add morph-derived noise generation with the 1000-step Markovian chain.
-2. Add a project-specific sampler that uses DDIM 200 steps from that morph-derived noise.
-3. Reuse the similarity and retrieval evaluation logic on generated images.
-4. Scale each MAD22 morphing subset independently.
+1. Run the 20-trial smoke generation on Kaggle/GPU with DDIM 200.
+2. Add generated-image embedding extraction and recovery evaluation.
+3. Scale each MAD22 morphing subset independently.

@@ -570,9 +570,9 @@ Supervisor settings written:
 
 Important:
 
-  Regenerate these sampling inputs after ElasticFaceArc embeddings are
-  available. The existing generated smoke files are not final experiment
-  inputs if they were created from temporary FRmodel embeddings.
+  The final ElasticFaceArc sampling inputs are now available at:
+
+    hcml_project/sampling_inputs/mad22_opencv_smoke_elasticface_arc/
 
 Step 12: Run NegFaceDiff
 
@@ -601,6 +601,48 @@ Important correction from the supervisor:
 
   Use the same morph-derived starting noise for NegFaceDiff and AdaptDiff so
   the comparison is fair.
+
+Implemented script:
+
+  python hcml_project/scripts/sample_paired_diffusion.py
+
+Smoke validation without reverse diffusion:
+
+  python hcml_project/scripts/sample_paired_diffusion.py ^
+    --prepare-only ^
+    --max-trials 1 ^
+    --device cpu
+
+Tiny local code-path test:
+
+  python hcml_project/scripts/sample_paired_diffusion.py ^
+    --max-trials 1 ^
+    --setting negfacediff ^
+    --ddim-steps 1 ^
+    --device cpu
+
+This one-step test is not a valid experiment result. It only proves that:
+
+  - the diffusion model loads
+  - the morph image is encoded into latent space
+  - morph-derived noise is created
+  - one DDIM step can run
+  - the latent decoder saves an output image
+
+Real Kaggle/GPU smoke experiment:
+
+  python hcml_project/scripts/sample_paired_diffusion.py ^
+    --max-trials 20 ^
+    --setting both ^
+    --ddim-steps 200 ^
+    --device cuda
+
+Expected outputs:
+
+  hcml_project/outputs/generated_smoke_elasticface_arc/noisy_latents/
+  hcml_project/outputs/generated_smoke_elasticface_arc/negfacediff/
+  hcml_project/outputs/generated_smoke_elasticface_arc/adaptdiff/
+  hcml_project/outputs/generated_smoke_elasticface_arc/sampling_report.csv
 
 Step 13: Run AdaptDiff
 

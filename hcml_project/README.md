@@ -607,6 +607,29 @@ controlled debugging/ablation runs. A smaller value keeps more information from
 the morph latent before reverse sampling, so it can help us check whether the
 very blurry outputs are caused by starting from almost pure noise.
 
+Autoencoder reconstruction diagnostic:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py \
+  --prepare-only \
+  --max-trials 4 \
+  --resize-filter lanczos \
+  --save-morph-reconstructions \
+  --output-dir hcml_project/outputs/reconstruction_check_lanczos \
+  --device cuda
+```
+
+This saves images in:
+
+```text
+hcml_project/outputs/reconstruction_check_lanczos/morph_reconstructions/
+```
+
+Use this before another full generation run. If these reconstructions are
+already blurry or distorted, then the autoencoder/latent representation is a
+major image-quality bottleneck. If they look good, then the quality loss is
+mostly happening during the diffusion reverse sampling.
+
 ## Next planned steps
 
 ### 10. Evaluate generated recovery images

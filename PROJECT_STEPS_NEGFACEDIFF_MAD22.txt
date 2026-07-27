@@ -672,6 +672,28 @@ Important:
   timesteps should be treated as a debugging or ablation experiment unless the
   supervisor approves using them as the main result.
 
+Autoencoder reconstruction diagnostic:
+
+  python hcml_project/scripts/sample_paired_diffusion.py ^
+    --prepare-only ^
+    --max-trials 4 ^
+    --resize-filter lanczos ^
+    --save-morph-reconstructions ^
+    --output-dir hcml_project/outputs/reconstruction_check_lanczos ^
+    --device cuda
+
+This saves reconstructed morph images here:
+
+  hcml_project/outputs/reconstruction_check_lanczos/morph_reconstructions/
+
+Why we do this:
+
+  The autoencoder is the part that converts a face image into latent space and
+  back to an image. If the autoencoder reconstruction is already blurry, then
+  the diffusion model is starting from a weak latent representation. If the
+  reconstruction looks good but the generated image looks bad, then the quality
+  loss is mostly happening in the reverse diffusion/sampling stage.
+
 Step 13: Run AdaptDiff
 
 Use:

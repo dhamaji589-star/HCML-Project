@@ -35,6 +35,13 @@ SETTINGS = {
     "adaptdiff": {"weight": 1.0, "adapt": True},
 }
 
+RESIZE_FILTERS = {
+    "nearest": Image.Resampling.NEAREST,
+    "bilinear": Image.Resampling.BILINEAR,
+    "bicubic": Image.Resampling.BICUBIC,
+    "lanczos": Image.Resampling.LANCZOS,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -102,6 +109,17 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--resize-filter",
+        choices=sorted(RESIZE_FILTERS),
+        default="bilinear",
+        help="PIL resize filter used when resizing morph images to the diffusion image size.",
+    )
+    parser.add_argument(
+        "--save-morph-reconstructions",
+        action="store_true",
+        help="Save autoencoder reconstructions of the input morphs for image-quality debugging.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -140,9 +158,9 @@ def load_contexts(path: Path) -> dict[str, np.ndarray]:
     return {key: data[key].astype(np.float32) for key in data.files}
 
 
-def load_image_tensor(path: Path, image_size: int) -> torch.Tensor:
+def load_image_tensor(path: Path, image_size: int, resize_filter: str) -> torch.Tensor:
     image = Image.open(path).convert("RGB").resize(
-        (image_size, image_size), Image.Resampling.BILINEAR
+        (image_size, image_size), RESIZE_FILTERS[resize_filter]
     )
     array = np.asarray(image, dtype=np.float32) / 255.0
     tensor = torch.from_numpy(array).permute(2, 0, 1)
@@ -178,19 +196,25 @@ def load_diffusion_model(checkpoint_dir: Path, device: torch.device):
     return diffusion_model, train_cfg
 
 
-def morph_to_noisy_latent(
+def morph_to_latent(
     morph_path: Path,
     image_size: int,
     latent_encoder: torch.nn.Module,
+    device: torch.device,
+    resize_filter: str,
+) -> torch.Tensor:
+    image = load_image_tensor(morph_path, image_size, resize_filter).unsqueeze(0).to(device)
+    with torch.no_grad():
+        return latent_encoder(image)
+
+
+def add_noise_to_latent(
+    latent: torch.Tensor,
     diffusion_model: torch.nn.Module,
     device: torch.device,
     generator: torch.Generator,
     noise_timestep: int | None,
 ) -> torch.Tensor:
-    image = load_image_tensor(morph_path, image_size).unsqueeze(0).to(device)
-    with torch.no_grad():
-        latent = latent_encoder(image)
-
     # Closed-form q(x_T | x_0). This is equivalent to applying the forward
     # Markovian noising process for all T diffusion steps.
     final_t = diffusion_model.T - 1 if noise_timestep is None else noise_timestep
@@ -210,6 +234,18 @@ def morph_to_noisy_latent(
         diffusion_model.sqrt_alpha_bars[final_t] * latent
         + diffusion_model.sqrt_one_minus_alpha_bars[final_t] * epsilon
     )
+
+
+def save_morph_reconstruction(
+    latent: torch.Tensor,
+    latent_decoder: torch.nn.Module,
+    output_path: Path,
+) -> None:
+    with torch.no_grad():
+        reconstruction = latent_decoder(latent).cpu()
+    reconstruction = denormalize_to_zero_to_one(reconstruction)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    save_image(reconstruction, output_path)
 
 
 def sample_ddim_from_noisy_latent(
@@ -329,10 +365,24 @@ def main() -> None:
             diffusion_model.T - 1 if args.noise_timestep is None else args.noise_timestep
         )
 
-        noisy_latent = morph_to_noisy_latent(
+        morph_latent = morph_to_latent(
             morph_path=Path(row["morph_path"]),
             image_size=image_size,
             latent_encoder=latent_encoder,
+            device=device,
+            resize_filter=args.resize_filter,
+        )
+
+        if args.save_morph_reconstructions:
+            reconstruction_path = output_root / "morph_reconstructions" / f"{trial_id}.png"
+            save_morph_reconstruction(
+                latent=morph_latent,
+                latent_decoder=latent_decoder,
+                output_path=reconstruction_path,
+            )
+
+        noisy_latent = add_noise_to_latent(
+            latent=morph_latent,
             diffusion_model=diffusion_model,
             device=device,
             generator=generator,
@@ -351,6 +401,7 @@ def main() -> None:
                     "output_path": "",
                     "noisy_latent_path": str(noisy_path),
                     "noise_timestep": str(noise_timestep),
+                    "resize_filter": args.resize_filter,
                     "status": "prepared_noisy_latent",
                 }
             )
@@ -383,6 +434,7 @@ def main() -> None:
                     "output_path": str(output_path),
                     "noisy_latent_path": str(noisy_path),
                     "noise_timestep": str(noise_timestep),
+                    "resize_filter": args.resize_filter,
                     "status": "generated",
                 }
             )
@@ -392,6 +444,7 @@ def main() -> None:
     print(f"Trials processed: {len(manifest)}")
     if report_rows:
         print(f"Noise timestep: {report_rows[0]['noise_timestep']}")
+    print(f"Resize filter: {args.resize_filter}")
     print(f"Prepare only: {args.prepare_only}")
     print(f"Output directory: {output_root}")
 

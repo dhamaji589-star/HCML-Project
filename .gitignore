@@ -2,6 +2,8 @@ MAD22/
 MAD22.zip
 *.zip
 DM_CASIA_cpd25/
+NegFaceDiff/models/autoencoder/first_stage_encoder_state_dict.pt
+NegFaceDiff/models/autoencoder/first_stage_decoder_state_dict.pt
 hcml_project/outputs/
 hcml_project/embeddings/
 hcml_project/sampling_inputs/
@@ -9,5 +11,6 @@ hcml_project/model_assets/
 hcml_project/metadata/*_aligned.csv
 hcml_project/metadata/*_embeddings.csv
 hcml_project/metadata/*_baseline_eval.csv
+hcml_project/metadata/*_sanity_eval.csv
 __pycache__/
 *.pyc

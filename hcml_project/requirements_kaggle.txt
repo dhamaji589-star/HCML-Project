@@ -11,3 +11,4 @@ scikit-image
 hydra-core
 omegaconf
 pytorch-lightning
+einops

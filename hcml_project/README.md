@@ -288,7 +288,7 @@ ElasticFace repository and keep it outside git, for example:
 hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth
 ```
 
-Expected final extraction command:
+Final smoke extraction command that has been run locally:
 
 ```bash
 python hcml_project/scripts/extract_identity_embeddings.py \
@@ -311,6 +311,13 @@ python hcml_project/scripts/extract_identity_embeddings.py \
 The script saves real embeddings to an NPZ file. Every row in the report also
 stores the embedding model name so we can avoid mixing temporary smoke-test
 features with final ElasticFaceArc contexts.
+
+Current ElasticFaceArc smoke result:
+
+```text
+Embeddings extracted: 22
+Embedding model: elasticface_arc
+```
 
 ### 6. Check required model assets
 
@@ -336,6 +343,26 @@ Strict mode, useful in Kaggle before running expensive jobs:
 python hcml_project/scripts/check_required_assets.py --strict
 ```
 
+The FFHQ LDM download provides a single `model.ckpt`. Convert it into the two
+NegFaceDiff autoencoder files with:
+
+```bash
+python hcml_project/scripts/convert_ffhq_autoencoder.py
+```
+
+This writes:
+
+```text
+NegFaceDiff/models/autoencoder/first_stage_encoder_state_dict.pt
+NegFaceDiff/models/autoencoder/first_stage_decoder_state_dict.pt
+```
+
+Current local asset status:
+
+```text
+All required assets are present.
+```
+
 ### 7. Evaluate the embedding sanity check
 
 Script:
@@ -348,14 +375,14 @@ Input:
 
 ```text
 hcml_project/metadata/mad22_opencv_smoke_trials.csv
-hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
-hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_embeddings.csv
+hcml_project/embeddings/mad22_opencv_smoke_elasticface_arc.npz
 ```
 
 Output:
 
 ```text
-hcml_project/metadata/mad22_opencv_smoke_baseline_eval.csv
+hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_sanity_eval.csv
 ```
 
 What this step does:
@@ -390,7 +417,7 @@ trial metadata -> aligned images -> embeddings -> similarity evaluation
 
 are connected correctly.
 
-Current smoke-test result with the temporary FarNeg FR model:
+Current smoke-test result with ElasticFaceArc:
 
 ```text
 Trials evaluated:       20
@@ -398,7 +425,7 @@ Gallery identities:     12
 Closer to hidden:       10/20
 Hidden retrieval top-1: 10/20
 Hidden retrieval top-5: 18/20
-Mean hidden rank:       2.45
+Mean hidden rank:       2.50
 ```
 
 The `10/20` top-1 result is reasonable for this smoke setup. Each morph is
@@ -429,14 +456,14 @@ Input:
 
 ```text
 hcml_project/metadata/mad22_opencv_smoke_trials.csv
-hcml_project/metadata/mad22_opencv_smoke_embeddings.csv
-hcml_project/embeddings/mad22_opencv_smoke_embeddings.npz
+hcml_project/metadata/mad22_opencv_smoke_elasticface_arc_embeddings.csv
+hcml_project/embeddings/mad22_opencv_smoke_elasticface_arc.npz
 ```
 
 Output:
 
 ```text
-hcml_project/sampling_inputs/mad22_opencv_smoke/
+hcml_project/sampling_inputs/mad22_opencv_smoke_elasticface_arc/
 ```
 
 Files created:
@@ -482,6 +509,7 @@ Context dimension: 512
 Positive contexts shape: (20, 512)
 Negative contexts shape: (20, 512)
 Hidden contexts shape:   (20, 512)
+Embedding model: elasticface_arc
 ```
 
 The two project settings from the supervisor are also written:
@@ -493,8 +521,7 @@ AdaptDiff:   weight = 1.0, adapt = true
 
 ## Next planned steps
 
-1. Download/setup ElasticFaceArc and rerun embeddings.
-2. Download/setup the latent autoencoder weights needed by NegFaceDiff sampling.
-3. Add morph-derived noise generation with the 1000-step Markovian chain.
-4. Add a project-specific sampler that uses DDIM 200 steps from that morph-derived noise.
-5. Reuse the similarity and retrieval evaluation logic on generated images.
+1. Add morph-derived noise generation with the 1000-step Markovian chain.
+2. Add a project-specific sampler that uses DDIM 200 steps from that morph-derived noise.
+3. Reuse the similarity and retrieval evaluation logic on generated images.
+4. Scale each MAD22 morphing subset independently.

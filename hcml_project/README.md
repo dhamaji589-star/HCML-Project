@@ -591,6 +591,50 @@ hcml_project/outputs/generated_smoke_elasticface_arc/sampling_report.csv
 
 ## Next planned steps
 
-1. Run the 20-trial smoke generation on Kaggle/GPU with DDIM 200.
-2. Add generated-image embedding extraction and recovery evaluation.
+### 10. Evaluate generated recovery images
+
+Script:
+
+```bash
+python hcml_project/scripts/evaluate_generated_recovery.py
+```
+
+What this step computes:
+
+```text
+sim_generated_hidden = cosine(embedding(generated), embedding(hidden identity))
+sim_generated_known  = cosine(embedding(generated), embedding(known identity))
+margin               = sim_generated_hidden - sim_generated_known
+```
+
+Success condition:
+
+```text
+sim_generated_hidden > sim_generated_known
+```
+
+Kaggle command after smoke generation:
+
+```bash
+python hcml_project/scripts/evaluate_generated_recovery.py \
+  --device cuda
+```
+
+Output:
+
+```text
+hcml_project/metadata/mad22_opencv_smoke_generated_recovery_eval.csv
+```
+
+This gives separate summaries for:
+
+```text
+NegFaceDiff
+AdaptDiff
+```
+
+## Next planned steps
+
+1. Run generated-image recovery evaluation on Kaggle.
+2. Debug output quality using the evaluation numbers and qualitative examples.
 3. Scale each MAD22 morphing subset independently.

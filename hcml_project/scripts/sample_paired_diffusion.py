@@ -105,7 +105,16 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Forward diffusion timestep used to turn the morph latent into noise. "
-            "Default uses the final training timestep, T-1."
+            "Default uses the first timestep from the selected DDIM schedule."
+        ),
+    )
+    parser.add_argument(
+        "--ddim-timestep-mode",
+        choices=["original", "linspace"],
+        default="original",
+        help=(
+            "DDIM timestep grid. 'original' matches NegFaceDiff's range(0, T, skip) "
+            "loop; 'linspace' is only for diagnostics with arbitrary start timesteps."
         ),
     )
     parser.add_argument(
@@ -213,15 +222,14 @@ def add_noise_to_latent(
     diffusion_model: torch.nn.Module,
     device: torch.device,
     generator: torch.Generator,
-    noise_timestep: int | None,
+    noise_timestep: int,
 ) -> torch.Tensor:
     # Closed-form q(x_T | x_0). This is equivalent to applying the forward
     # Markovian noising process for all T diffusion steps.
-    final_t = diffusion_model.T - 1 if noise_timestep is None else noise_timestep
-    if final_t < 0 or final_t >= diffusion_model.T:
+    if noise_timestep < 0 or noise_timestep >= diffusion_model.T:
         raise ValueError(
             f"--noise-timestep must be between 0 and {diffusion_model.T - 1}; "
-            f"got {final_t}"
+            f"got {noise_timestep}"
         )
 
     epsilon = torch.randn(
@@ -231,8 +239,8 @@ def add_noise_to_latent(
         dtype=latent.dtype,
     )
     return (
-        diffusion_model.sqrt_alpha_bars[final_t] * latent
-        + diffusion_model.sqrt_one_minus_alpha_bars[final_t] * epsilon
+        diffusion_model.sqrt_alpha_bars[noise_timestep] * latent
+        + diffusion_model.sqrt_one_minus_alpha_bars[noise_timestep] * epsilon
     )
 
 
@@ -248,6 +256,34 @@ def save_morph_reconstruction(
     save_image(reconstruction, output_path)
 
 
+def build_ddim_timesteps(
+    diffusion_model: torch.nn.Module,
+    ddim_steps: int,
+    noise_timestep: int | None,
+    timestep_mode: str,
+) -> np.ndarray:
+    if ddim_steps <= 0:
+        raise ValueError(f"--ddim-steps must be positive; got {ddim_steps}")
+
+    if timestep_mode == "original":
+        skip = diffusion_model.T // ddim_steps
+        if skip <= 0:
+            raise ValueError(
+                f"--ddim-steps={ddim_steps} is too large for T={diffusion_model.T}"
+            )
+        timesteps = np.asarray(list(range(0, diffusion_model.T, skip)), dtype=np.int64)
+        max_timestep = timesteps[-1] if noise_timestep is None else noise_timestep
+        timesteps = timesteps[timesteps <= max_timestep]
+    else:
+        max_timestep = diffusion_model.T - 1 if noise_timestep is None else noise_timestep
+        timesteps = np.linspace(0, max_timestep, ddim_steps, dtype=np.int64)
+        timesteps = np.unique(timesteps)
+
+    if timesteps.size == 0:
+        raise ValueError("DDIM timestep schedule is empty.")
+    return timesteps
+
+
 def sample_ddim_from_noisy_latent(
     diffusion_model: torch.nn.Module,
     x_t: torch.Tensor,
@@ -255,14 +291,11 @@ def sample_ddim_from_noisy_latent(
     negative_context: torch.Tensor,
     weight: float,
     adapt: bool,
-    ddim_steps: int,
-    start_timestep: int,
+    timesteps: np.ndarray,
 ) -> torch.Tensor:
     n_samples = x_t.shape[0]
     device = x_t.device
     final_weight = weight
-    timesteps = np.linspace(0, start_timestep, ddim_steps, dtype=np.int64)
-    timesteps = np.unique(timesteps)
 
     with torch.no_grad():
         reversed_timesteps = list(reversed(timesteps.tolist()))
@@ -284,7 +317,7 @@ def sample_ddim_from_noisy_latent(
 
             alpha_prod_t = diffusion_model.alpha_bars[i]
             if prev_timestep >= 0:
-                alpha_prod_t_prev = diffusion_model.alpha_bars[prev_timestep].to(device)
+                alpha_prod_t_prev = diffusion_model.alphas_prev[prev_timestep].to(device)
             else:
                 alpha_prod_t_prev = torch.tensor(1.0, device=device)
 
@@ -361,9 +394,13 @@ def main() -> None:
             diffusion_model = instantiate(train_cfg.diffusion).to(device)
             diffusion_model.eval()
 
-        noise_timestep = (
-            diffusion_model.T - 1 if args.noise_timestep is None else args.noise_timestep
+        ddim_timesteps = build_ddim_timesteps(
+            diffusion_model=diffusion_model,
+            ddim_steps=args.ddim_steps,
+            noise_timestep=args.noise_timestep,
+            timestep_mode=args.ddim_timestep_mode,
         )
+        noise_timestep = int(ddim_timesteps[-1])
 
         morph_latent = morph_to_latent(
             morph_path=Path(row["morph_path"]),
@@ -401,6 +438,8 @@ def main() -> None:
                     "output_path": "",
                     "noisy_latent_path": str(noisy_path),
                     "noise_timestep": str(noise_timestep),
+                    "ddim_timestep_mode": args.ddim_timestep_mode,
+                    "ddim_effective_steps": str(len(ddim_timesteps)),
                     "resize_filter": args.resize_filter,
                     "status": "prepared_noisy_latent",
                 }
@@ -416,8 +455,7 @@ def main() -> None:
                 negative_context=negative,
                 weight=setting["weight"],
                 adapt=setting["adapt"],
-                ddim_steps=args.ddim_steps,
-                start_timestep=noise_timestep,
+                timesteps=ddim_timesteps,
             )
             with torch.no_grad():
                 image = latent_decoder(sampled_latent).cpu()
@@ -434,6 +472,8 @@ def main() -> None:
                     "output_path": str(output_path),
                     "noisy_latent_path": str(noisy_path),
                     "noise_timestep": str(noise_timestep),
+                    "ddim_timestep_mode": args.ddim_timestep_mode,
+                    "ddim_effective_steps": str(len(ddim_timesteps)),
                     "resize_filter": args.resize_filter,
                     "status": "generated",
                 }
@@ -444,6 +484,8 @@ def main() -> None:
     print(f"Trials processed: {len(manifest)}")
     if report_rows:
         print(f"Noise timestep: {report_rows[0]['noise_timestep']}")
+        print(f"DDIM timestep mode: {report_rows[0]['ddim_timestep_mode']}")
+        print(f"DDIM effective steps: {report_rows[0]['ddim_effective_steps']}")
     print(f"Resize filter: {args.resize_filter}")
     print(f"Prepare only: {args.prepare_only}")
     print(f"Output directory: {output_root}")

@@ -637,6 +637,15 @@ Real Kaggle/GPU smoke experiment:
     --ddim-steps 200 ^
     --device cuda
 
+With --ddim-steps 200, the default sampler follows the original NegFaceDiff
+DDIM loop:
+
+  skip = 1000 // 200 = 5
+  timesteps = 995, 990, 985, ..., 0
+
+This matters because the model was trained with a 1000-step diffusion schedule,
+but the DDIM shortcut only visits 200 selected timesteps during generation.
+
 Expected outputs:
 
   hcml_project/outputs/generated_smoke_elasticface_arc/noisy_latents/
@@ -651,15 +660,16 @@ Image-quality diagnostic:
     --setting both ^
     --ddim-steps 200 ^
     --noise-timestep 500 ^
+    --ddim-timestep-mode linspace ^
     --output-dir hcml_project/outputs/generated_smoke_elasticface_arc_t500 ^
     --device cuda
 
 Why this helps:
 
-  The official project setup starts from the morph after the full forward
-  diffusion process. In a 1000-step diffusion model, that means timestep 999.
-  At that point, the latent is almost pure noise, so the generated image can
-  become very blurry or lose visible identity details.
+  The official project setup starts from the morph after the forward diffusion
+  process, then uses DDIM as a 200-step shortcut for reverse sampling. The
+  original NegFaceDiff-style DDIM loop starts from timestep 995 when using
+  200 steps.
 
   The --noise-timestep option lets us test smaller values such as 500 or 250.
   This keeps more information from the morphed image before sampling. If the
@@ -668,9 +678,10 @@ Why this helps:
 
 Important:
 
-  The default is still the supervisor-aligned setup, timestep 999. Smaller
-  timesteps should be treated as a debugging or ablation experiment unless the
-  supervisor approves using them as the main result.
+  The default is still the supervisor-aligned setup using the original
+  NegFaceDiff-style DDIM schedule. Smaller timesteps should be treated as a
+  debugging or ablation experiment unless the supervisor approves using them as
+  the main result.
 
 Autoencoder reconstruction diagnostic:
 

@@ -580,6 +580,10 @@ python hcml_project/scripts/sample_paired_diffusion.py \
   --device cuda
 ```
 
+With `--ddim-steps 200`, the default sampler now follows the original
+NegFaceDiff DDIM loop: `skip = 1000 // 200 = 5`, so the reverse process starts
+at timestep `995` and then uses `990, 985, ... 0`.
+
 Outputs:
 
 ```text
@@ -597,15 +601,16 @@ python hcml_project/scripts/sample_paired_diffusion.py \
   --setting both \
   --ddim-steps 200 \
   --noise-timestep 500 \
+  --ddim-timestep-mode linspace \
   --output-dir hcml_project/outputs/generated_smoke_elasticface_arc_t500 \
   --device cuda
 ```
 
-The default behavior still uses the final training timestep, `T-1`, which is
-999 for a 1000-step diffusion model. The `--noise-timestep` option is only for
-controlled debugging/ablation runs. A smaller value keeps more information from
-the morph latent before reverse sampling, so it can help us check whether the
-very blurry outputs are caused by starting from almost pure noise.
+The default behavior uses the original NegFaceDiff-style DDIM schedule. The
+`--noise-timestep` option is only for controlled debugging/ablation runs. A
+smaller value keeps more information from the morph latent before reverse
+sampling, so it can help us check whether the very blurry outputs are caused by
+starting from almost pure noise.
 
 Autoencoder reconstruction diagnostic:
 

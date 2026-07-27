@@ -1,0 +1,1097 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R 12 0 R 14 0 R 16 0 R 18 0 R 20 0 R 22 0 R 24 0 R] /Count 11 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1332 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+(HCML PROJECT CONCEPTUAL NOTES) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(These notes explain the project in simple language, with the technical terms) Tj
+T*
+(you can use in the report or presentation.) Tj
+T*
+() Tj
+T*
+(1. MAIN PROJECT GOAL) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(The project is about hidden identity recovery from morphed face images.) Tj
+T*
+() Tj
+T*
+(A morph image is created from two people:) Tj
+T*
+() Tj
+T*
+(  Person A + Person B -> morphed image M_AB) Tj
+T*
+() Tj
+T*
+(In our task, one identity is known:) Tj
+T*
+() Tj
+T*
+(  known identity = A) Tj
+T*
+() Tj
+T*
+(The goal is to recover the other identity:) Tj
+T*
+() Tj
+T*
+(  hidden identity = B) Tj
+T*
+() Tj
+T*
+(Simple example:) Tj
+T*
+() Tj
+T*
+(  input morph: Alice + Bob) Tj
+T*
+(  known identity: Alice) Tj
+T*
+(  target: recover Bob) Tj
+T*
+() Tj
+T*
+(Presentation sentence:) Tj
+T*
+() Tj
+T*
+(Quote: Given a morph image and one known contributing identity, the goal is to) Tj
+T*
+(Quote: generate a face image that is closer to the hidden contributing identity.) Tj
+T*
+() Tj
+T*
+(2. DATASET: MAD22) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(MAD22 contains:) Tj
+T*
+() Tj
+T*
+(  1. Bona fide images: real/genuine source face images) Tj
+T*
+(  2. Morphed images: images created by combining two identities) Tj
+T*
+() Tj
+T*
+(Example morph filename:) Tj
+T*
+() Tj
+T*
+(  001_08-vs-010_08.jpg) Tj
+ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 1194 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(This means the morph was made from:) Tj
+T*
+() Tj
+T*
+(  001_08 and 010_08) Tj
+T*
+() Tj
+T*
+(For each morph, we create two directed recovery trials:) Tj
+T*
+() Tj
+T*
+(  Trial 1: morph + 001_08 -> recover 010_08) Tj
+T*
+(  Trial 2: morph + 010_08 -> recover 001_08) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  directed hidden-identity recovery trials) Tj
+T*
+() Tj
+T*
+(Why two trials?) Tj
+T*
+() Tj
+T*
+(The task is directional. If A is known, B is hidden. If B is known, A is) Tj
+T*
+(hidden.) Tj
+T*
+() Tj
+T*
+(3. METADATA CSV) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(The metadata CSV turns image filenames into clear machine-readable tasks.) Tj
+T*
+() Tj
+T*
+(Each row stores:) Tj
+T*
+() Tj
+T*
+(  trial_id) Tj
+T*
+(  morph_path) Tj
+T*
+(  known_path) Tj
+T*
+(  hidden_path) Tj
+T*
+(  known_id) Tj
+T*
+(  hidden_id) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  trial metadata) Tj
+T*
+() Tj
+T*
+(Presentation sentence:) Tj
+T*
+() Tj
+T*
+(Quote: I converted the dataset filenames into directed metadata rows, where each) Tj
+T*
+(Quote: row specifies the morph image, the known identity, and the hidden target) Tj
+T*
+(Quote: identity.) Tj
+T*
+() Tj
+T*
+(4. SMOKE SUBSET) Tj
+T*
+() Tj
+ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 9 0 R >>
+endobj
+9 0 obj
+<< /Length 1225 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(The full OpenCV subset has:) Tj
+T*
+() Tj
+T*
+(  604 usable morphs) Tj
+T*
+(  1208 directed trials) Tj
+T*
+() Tj
+T*
+(Before running everything, we use a small smoke subset:) Tj
+T*
+() Tj
+T*
+(  10 morphs) Tj
+T*
+(  20 directed trials) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  smoke test) Tj
+T*
+() Tj
+T*
+(Why?) Tj
+T*
+() Tj
+T*
+(It lets us quickly check whether paths, preprocessing, embeddings, model) Tj
+T*
+(loading, and generation work before spending GPU time on the full dataset.) Tj
+T*
+() Tj
+T*
+(Smoke-test results are not final research results. They are for debugging.) Tj
+T*
+() Tj
+T*
+(5. IMAGE MANIFEST) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(The trial CSV repeats images. The same image can appear in many trials.) Tj
+T*
+() Tj
+T*
+(An image manifest stores each unique image once.) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  unique image manifest) Tj
+T*
+() Tj
+T*
+(Difference:) Tj
+T*
+() Tj
+T*
+(  metadata CSV = what recovery tasks to solve) Tj
+T*
+(  image manifest = what unique image files need processing) Tj
+T*
+() Tj
+T*
+(Why?) Tj
+T*
+() Tj
+T*
+(We align and embed each image only once, then reuse it in all relevant trials.) Tj
+T*
+() Tj
+T*
+(6. FACE ALIGNMENT) Tj
+T*
+() Tj
+T*
+() Tj
+ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 11 0 R >>
+endobj
+11 0 obj
+<< /Length 1359 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+(Before extracting identity embeddings, face images should be aligned.) Tj
+T*
+() Tj
+T*
+(Alignment means:) Tj
+T*
+() Tj
+T*
+(  detect/crop face) Tj
+T*
+(  place face consistently) Tj
+T*
+(  resize image) Tj
+T*
+() Tj
+T*
+(For ElasticFaceArc embeddings, we use:) Tj
+T*
+() Tj
+T*
+(  112 x 112 face crops) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  face alignment) Tj
+T*
+(  ArcFace-style alignment) Tj
+T*
+(  face preprocessing) Tj
+T*
+() Tj
+T*
+(Important distinction:) Tj
+T*
+() Tj
+T*
+(  112x112 aligned images -> used for face-recognition embeddings) Tj
+T*
+(  128x128 images -> used by the diffusion autoencoder) Tj
+T*
+() Tj
+T*
+(7. ELASTICFACEARC) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(ElasticFaceArc is the face-recognition model we use for identity contexts.) Tj
+T*
+() Tj
+T*
+(Simple function:) Tj
+T*
+() Tj
+T*
+(  face image -> ElasticFaceArc -> 512-dimensional identity embedding) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  face-recognition embedding extractor) Tj
+T*
+(  identity encoder) Tj
+T*
+(  feature extractor) Tj
+T*
+() Tj
+T*
+(We use ElasticFaceArc to compute:) Tj
+T*
+() Tj
+T*
+(  positive context = embedding\(morph image\)) Tj
+T*
+(  negative context = embedding\(known identity image\)) Tj
+T*
+(  hidden context = embedding\(hidden identity image, for evaluation\)) Tj
+T*
+() Tj
+T*
+(Important correction from the supervisor:) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 13 0 R >>
+endobj
+13 0 obj
+<< /Length 1322 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(  Final identity contexts must use ElasticFaceArc.) Tj
+T*
+(  FRmodel_FarNeg_CASIA and FRmodel_FarNegAdaptive_CASIA are not used for final) Tj
+T*
+(  conditioning.) Tj
+T*
+(  ElasticFaceCos is optional for final cosine-similarity evaluation.) Tj
+T*
+() Tj
+T*
+(8. IDENTITY EMBEDDINGS) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(An identity embedding is a vector of numbers representing a face identity.) Tj
+T*
+() Tj
+T*
+(In our project:) Tj
+T*
+() Tj
+T*
+(  embedding size = 512 numbers) Tj
+T*
+() Tj
+T*
+(If two images are of the same person, their embeddings should be similar.) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  512-dimensional identity embedding) Tj
+T*
+() Tj
+T*
+(Similarity is usually measured with:) Tj
+T*
+() Tj
+T*
+(  cosine similarity) Tj
+T*
+() Tj
+T*
+(9. AUTOENCODER) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(The autoencoder works with images, not identity embeddings.) Tj
+T*
+() Tj
+T*
+(It has two parts:) Tj
+T*
+() Tj
+T*
+(  encoder: image -> latent) Tj
+T*
+(  decoder: latent -> image) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  latent autoencoder) Tj
+T*
+(  VQGAN autoencoder) Tj
+T*
+(  first-stage encoder/decoder) Tj
+T*
+() Tj
+T*
+(In our project:) Tj
+T*
+() Tj
+T*
+(  morph image -> autoencoder encoder -> morph latent) Tj
+T*
+(  generated latent -> autoencoder decoder -> generated face image) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 15 0 R >>
+endobj
+15 0 obj
+<< /Length 1306 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(Important:) Tj
+T*
+() Tj
+T*
+(The autoencoder does not create identity embeddings. ElasticFaceArc creates) Tj
+T*
+(identity embeddings.) Tj
+T*
+() Tj
+T*
+(10. LATENT SPACE) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(Latent space is a compressed representation space.) Tj
+T*
+() Tj
+T*
+(Instead of generating directly in pixel space, the diffusion model works in) Tj
+T*
+(latent space.) Tj
+T*
+() Tj
+T*
+(Simple idea:) Tj
+T*
+() Tj
+T*
+(  image space = visible image pixels) Tj
+T*
+(  latent space = compressed hidden representation) Tj
+T*
+() Tj
+T*
+(Why use latent space?) Tj
+T*
+() Tj
+T*
+(It is more efficient and is the setup used by the pretrained diffusion model.) Tj
+T*
+() Tj
+T*
+(11. FORWARD DIFFUSION / MARKOVIAN NOISING) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(Before sampling, the morph image is encoded into latent space and noise is) Tj
+T*
+(added.) Tj
+T*
+() Tj
+T*
+(Flow:) Tj
+T*
+() Tj
+T*
+(  morph image -> morph latent -> noisy morph latent) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  forward diffusion process) Tj
+T*
+(  Markovian noising chain) Tj
+T*
+(  q\(x_t | x_0\)) Tj
+T*
+() Tj
+T*
+(Supervisor instruction:) Tj
+T*
+() Tj
+T*
+(  Use a total of 1000 noising steps to obtain the starting noise.) Tj
+T*
+(  Use DDIM with 200 steps during sampling.) Tj
+T*
+() Tj
+T*
+(12. DM_CASIA DIFFUSION MODEL) Tj
+ET
+endstream
+endobj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 17 0 R >>
+endobj
+17 0 obj
+<< /Length 1292 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+() Tj
+T*
+(DM_CASIA is the pretrained identity-conditioned diffusion model.) Tj
+T*
+() Tj
+T*
+(Simple function:) Tj
+T*
+() Tj
+T*
+(  noisy latent + identity condition -> denoised/generated latent) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  conditional denoising diffusion model) Tj
+T*
+(  latent diffusion model) Tj
+T*
+(  identity-conditioned diffusion model) Tj
+T*
+() Tj
+T*
+(We do not train DM_CASIA. We load pretrained weights and use it for sampling.) Tj
+T*
+() Tj
+T*
+(13. NEGFACEDIFF) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(NegFaceDiff is a sampling/guidance method, not a newly trained model in this) Tj
+T*
+(project.) Tj
+T*
+() Tj
+T*
+(It uses:) Tj
+T*
+() Tj
+T*
+(  positive context = morph embedding) Tj
+T*
+(  negative context = known identity embedding) Tj
+T*
+(  weight = 0.5) Tj
+T*
+(  adapt = false) Tj
+T*
+() Tj
+T*
+(Simple idea:) Tj
+T*
+() Tj
+T*
+(  move toward the morph identity) Tj
+T*
+(  move away from the known identity) Tj
+T*
+(  hopefully reveal the hidden identity) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  negative identity guidance) Tj
+T*
+(  fixed negative guidance) Tj
+T*
+() Tj
+T*
+(14. ADAPTDIFF) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(AdaptDiff uses the same general idea as NegFaceDiff, but the guidance strength) Tj
+T*
+(changes over denoising time.) Tj
+ET
+endstream
+endobj
+18 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 19 0 R >>
+endobj
+19 0 obj
+<< /Length 1316 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(It uses:) Tj
+T*
+() Tj
+T*
+(  positive context = morph embedding) Tj
+T*
+(  negative context = known identity embedding) Tj
+T*
+(  weight = 1.0) Tj
+T*
+(  adapt = true) Tj
+T*
+() Tj
+T*
+(Technical terms:) Tj
+T*
+() Tj
+T*
+(  adaptive negative guidance) Tj
+T*
+(  adaptive guidance schedule) Tj
+T*
+() Tj
+T*
+(15. FULL CORRECT PIPELINE) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(The full pipeline has two parallel branches.) Tj
+T*
+() Tj
+T*
+(Identity branch:) Tj
+T*
+() Tj
+T*
+(  morph image -> ElasticFaceArc -> positive identity embedding) Tj
+T*
+(  known image -> ElasticFaceArc -> negative identity embedding) Tj
+T*
+(  hidden image -> ElasticFaceArc -> hidden identity embedding for evaluation) Tj
+T*
+() Tj
+T*
+(Image/latent branch:) Tj
+T*
+() Tj
+T*
+(  morph image) Tj
+T*
+(    -> autoencoder encoder) Tj
+T*
+(    -> morph latent) Tj
+T*
+(    -> forward diffusion/noising) Tj
+T*
+(    -> noisy morph latent) Tj
+T*
+() Tj
+T*
+(Sampling branch:) Tj
+T*
+() Tj
+T*
+(  noisy morph latent) Tj
+T*
+(  + positive identity embedding) Tj
+T*
+(  + negative identity embedding) Tj
+T*
+(    -> DM_CASIA with NegFaceDiff or AdaptDiff guidance) Tj
+T*
+(    -> generated latent) Tj
+T*
+() Tj
+T*
+(Decoding branch:) Tj
+T*
+() Tj
+T*
+(  generated latent -> autoencoder decoder -> generated face image) Tj
+T*
+() Tj
+T*
+(Evaluation branch:) Tj
+ET
+endstream
+endobj
+20 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 21 0 R >>
+endobj
+21 0 obj
+<< /Length 1339 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(  generated face image -> face-recognition model -> generated embedding) Tj
+T*
+(  compare generated embedding with hidden and known embeddings) Tj
+T*
+() Tj
+T*
+(16. WHAT WE ARE TRAINING) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(In this project, we are not training the main models.) Tj
+T*
+() Tj
+T*
+(We use pretrained:) Tj
+T*
+() Tj
+T*
+(  ElasticFaceArc) Tj
+T*
+(  latent autoencoder) Tj
+T*
+(  DM_CASIA diffusion model) Tj
+T*
+() Tj
+T*
+(NegFaceDiff and AdaptDiff are sampling strategies applied to the pretrained) Tj
+T*
+(diffusion model.) Tj
+T*
+() Tj
+T*
+(Technical term:) Tj
+T*
+() Tj
+T*
+(  inference / sampling with pretrained models) Tj
+T*
+() Tj
+T*
+(Not training means we are not doing:) Tj
+T*
+() Tj
+T*
+(  loss.backward\(\)) Tj
+T*
+(  optimizer.step\(\)) Tj
+T*
+() Tj
+T*
+(Presentation sentence:) Tj
+T*
+() Tj
+T*
+(Quote: I did not train a new model from scratch. I used pretrained components and) Tj
+T*
+(Quote: evaluated negative identity guidance strategies for hidden identity recovery.) Tj
+T*
+() Tj
+T*
+(17. CURRENT FACE RECOGNITION AND EVALUATION SETUP) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(Current identity-context model:) Tj
+T*
+() Tj
+T*
+(  ElasticFaceArc with iresnet100 backbone) Tj
+T*
+() Tj
+T*
+(Used for:) Tj
+T*
+() Tj
+T*
+(  positive context) Tj
+T*
+(  negative context) Tj
+T*
+(  hidden context) Tj
+T*
+(  smoke sanity checks) Tj
+ET
+endstream
+endobj
+22 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 23 0 R >>
+endobj
+23 0 obj
+<< /Length 1390 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+() Tj
+T*
+(Current sanity evaluation:) Tj
+T*
+() Tj
+T*
+(  cosine\(embedding\(morph\), embedding\(known\)\)) Tj
+T*
+(  cosine\(embedding\(morph\), embedding\(hidden\)\)) Tj
+T*
+() Tj
+T*
+(This is only a sanity check, not the final diffusion evaluation.) Tj
+T*
+() Tj
+T*
+(Final generated-image evaluation should compute:) Tj
+T*
+() Tj
+T*
+(  embedding\(generated image\)) Tj
+T*
+(  embedding\(hidden identity\)) Tj
+T*
+(  embedding\(known identity\)) Tj
+T*
+() Tj
+T*
+(Then:) Tj
+T*
+() Tj
+T*
+(  sim_to_hidden = cosine\(generated, hidden\)) Tj
+T*
+(  sim_to_known = cosine\(generated, known\)) Tj
+T*
+(  margin = sim_to_hidden - sim_to_known) Tj
+T*
+() Tj
+T*
+(Success condition:) Tj
+T*
+() Tj
+T*
+(  sim_to_hidden > sim_to_known) Tj
+T*
+() Tj
+T*
+(Optional:) Tj
+T*
+() Tj
+T*
+(ElasticFaceCos or another face-recognition model can be used as an additional) Tj
+T*
+(evaluation model, but ElasticFaceArc is the required model for identity) Tj
+T*
+(contexts.) Tj
+T*
+() Tj
+T*
+(18. CURRENT PROJECT STATUS) Tj
+T*
+() Tj
+T*
+() Tj
+T*
+(Completed:) Tj
+T*
+() Tj
+T*
+(  MAD22 metadata creation) Tj
+T*
+(  smoke subset creation) Tj
+T*
+(  image manifest creation) Tj
+T*
+(  face alignment) Tj
+T*
+(  ElasticFaceArc embedding extraction) Tj
+T*
+(  paired sampling input preparation) Tj
+T*
+(  model asset setup) Tj
+T*
+(  paired diffusion sampler) Tj
+T*
+(  20-trial smoke generation on Kaggle GPU) Tj
+T*
+() Tj
+ET
+endstream
+endobj
+24 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 3 0 R >> >> /Contents 25 0 R >>
+endobj
+25 0 obj
+<< /Length 370 >>
+stream
+BT
+/F1 10 Tf
+50 790 Td
+14 TL
+(Current observation:) Tj
+T*
+() Tj
+T*
+(  generated images are blurry) Tj
+T*
+(  NegFaceDiff and AdaptDiff outputs look very similar) Tj
+T*
+(  generated faces do not clearly match hidden identities yet) Tj
+T*
+() Tj
+T*
+(Next step:) Tj
+T*
+() Tj
+T*
+(  debug output quality) Tj
+T*
+(  then compute generated-image evaluation metrics) Tj
+T*
+() Tj
+ET
+endstream
+endobj
+xref
+0 26
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000184 00000 n 
+0000000254 00000 n 
+0000000380 00000 n 
+0000001764 00000 n 
+0000001890 00000 n 
+0000003136 00000 n 
+0000003262 00000 n 
+0000004539 00000 n 
+0000004667 00000 n 
+0000006079 00000 n 
+0000006207 00000 n 
+0000007582 00000 n 
+0000007710 00000 n 
+0000009069 00000 n 
+0000009197 00000 n 
+0000010542 00000 n 
+0000010670 00000 n 
+0000012039 00000 n 
+0000012167 00000 n 
+0000013559 00000 n 
+0000013687 00000 n 
+0000015130 00000 n 
+0000015258 00000 n 
+trailer
+<< /Size 26 /Root 1 0 R >>
+startxref
+15680
+%%EOF

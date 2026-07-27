@@ -644,6 +644,34 @@ Expected outputs:
   hcml_project/outputs/generated_smoke_elasticface_arc/adaptdiff/
   hcml_project/outputs/generated_smoke_elasticface_arc/sampling_report.csv
 
+Image-quality diagnostic:
+
+  python hcml_project/scripts/sample_paired_diffusion.py ^
+    --max-trials 4 ^
+    --setting both ^
+    --ddim-steps 200 ^
+    --noise-timestep 500 ^
+    --output-dir hcml_project/outputs/generated_smoke_elasticface_arc_t500 ^
+    --device cuda
+
+Why this helps:
+
+  The official project setup starts from the morph after the full forward
+  diffusion process. In a 1000-step diffusion model, that means timestep 999.
+  At that point, the latent is almost pure noise, so the generated image can
+  become very blurry or lose visible identity details.
+
+  The --noise-timestep option lets us test smaller values such as 500 or 250.
+  This keeps more information from the morphed image before sampling. If the
+  generated images become much clearer, then we know the blur is related to how
+  much morph information is destroyed before reverse sampling.
+
+Important:
+
+  The default is still the supervisor-aligned setup, timestep 999. Smaller
+  timesteps should be treated as a debugging or ablation experiment unless the
+  supervisor approves using them as the main result.
+
 Step 13: Run AdaptDiff
 
 Use:

@@ -93,6 +93,15 @@ def parse_args() -> argparse.Namespace:
         help="DDIM reverse sampling steps. Supervisor recommended 200.",
     )
     parser.add_argument(
+        "--noise-timestep",
+        type=int,
+        default=None,
+        help=(
+            "Forward diffusion timestep used to turn the morph latent into noise. "
+            "Default uses the final training timestep, T-1."
+        ),
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -176,6 +185,7 @@ def morph_to_noisy_latent(
     diffusion_model: torch.nn.Module,
     device: torch.device,
     generator: torch.Generator,
+    noise_timestep: int | None,
 ) -> torch.Tensor:
     image = load_image_tensor(morph_path, image_size).unsqueeze(0).to(device)
     with torch.no_grad():
@@ -183,7 +193,13 @@ def morph_to_noisy_latent(
 
     # Closed-form q(x_T | x_0). This is equivalent to applying the forward
     # Markovian noising process for all T diffusion steps.
-    final_t = diffusion_model.T - 1
+    final_t = diffusion_model.T - 1 if noise_timestep is None else noise_timestep
+    if final_t < 0 or final_t >= diffusion_model.T:
+        raise ValueError(
+            f"--noise-timestep must be between 0 and {diffusion_model.T - 1}; "
+            f"got {final_t}"
+        )
+
     epsilon = torch.randn(
         latent.shape,
         generator=generator,
@@ -204,17 +220,18 @@ def sample_ddim_from_noisy_latent(
     weight: float,
     adapt: bool,
     ddim_steps: int,
+    start_timestep: int,
 ) -> torch.Tensor:
     n_samples = x_t.shape[0]
     device = x_t.device
-    skip = diffusion_model.T // ddim_steps
     final_weight = weight
+    timesteps = np.linspace(0, start_timestep, ddim_steps, dtype=np.int64)
+    timesteps = np.unique(timesteps)
 
     with torch.no_grad():
-        for i in tqdm(
-            reversed(range(0, diffusion_model.T, skip)),
-            total=ddim_steps,
-            desc="DDIM sampling",
+        reversed_timesteps = list(reversed(timesteps.tolist()))
+        for step_index, i in enumerate(
+            tqdm(reversed_timesteps, total=len(reversed_timesteps), desc="DDIM sampling")
         ):
             t = torch.full((n_samples,), i, dtype=torch.long, device=device)
             eps_pos = diffusion_model.eps_model(x_t, t, context)
@@ -224,11 +241,14 @@ def sample_ddim_from_noisy_latent(
                 final_weight = weight * (1 - i / diffusion_model.T)
 
             model_output = (1 + final_weight) * eps_pos - final_weight * eps_neg
-            prev_timestep = i - skip
+            if step_index + 1 < len(reversed_timesteps):
+                prev_timestep = reversed_timesteps[step_index + 1]
+            else:
+                prev_timestep = -1
 
             alpha_prod_t = diffusion_model.alpha_bars[i]
             if prev_timestep >= 0:
-                alpha_prod_t_prev = diffusion_model.alphas_prev[prev_timestep].to(device)
+                alpha_prod_t_prev = diffusion_model.alpha_bars[prev_timestep].to(device)
             else:
                 alpha_prod_t_prev = torch.tensor(1.0, device=device)
 
@@ -305,6 +325,10 @@ def main() -> None:
             diffusion_model = instantiate(train_cfg.diffusion).to(device)
             diffusion_model.eval()
 
+        noise_timestep = (
+            diffusion_model.T - 1 if args.noise_timestep is None else args.noise_timestep
+        )
+
         noisy_latent = morph_to_noisy_latent(
             morph_path=Path(row["morph_path"]),
             image_size=image_size,
@@ -312,6 +336,7 @@ def main() -> None:
             diffusion_model=diffusion_model,
             device=device,
             generator=generator,
+            noise_timestep=noise_timestep,
         )
 
         noisy_path = output_root / "noisy_latents" / f"{trial_id}.pt"
@@ -325,6 +350,7 @@ def main() -> None:
                     "setting": "prepare_only",
                     "output_path": "",
                     "noisy_latent_path": str(noisy_path),
+                    "noise_timestep": str(noise_timestep),
                     "status": "prepared_noisy_latent",
                 }
             )
@@ -340,6 +366,7 @@ def main() -> None:
                 weight=setting["weight"],
                 adapt=setting["adapt"],
                 ddim_steps=args.ddim_steps,
+                start_timestep=noise_timestep,
             )
             with torch.no_grad():
                 image = latent_decoder(sampled_latent).cpu()
@@ -355,6 +382,7 @@ def main() -> None:
                     "setting": setting_name,
                     "output_path": str(output_path),
                     "noisy_latent_path": str(noisy_path),
+                    "noise_timestep": str(noise_timestep),
                     "status": "generated",
                 }
             )
@@ -362,6 +390,8 @@ def main() -> None:
     write_report(report_rows, output_root)
     print(f"Device: {device}")
     print(f"Trials processed: {len(manifest)}")
+    if report_rows:
+        print(f"Noise timestep: {report_rows[0]['noise_timestep']}")
     print(f"Prepare only: {args.prepare_only}")
     print(f"Output directory: {output_root}")
 

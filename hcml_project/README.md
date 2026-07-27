@@ -589,6 +589,24 @@ hcml_project/outputs/generated_smoke_elasticface_arc/adaptdiff/
 hcml_project/outputs/generated_smoke_elasticface_arc/sampling_report.csv
 ```
 
+Image-quality diagnostic:
+
+```bash
+python hcml_project/scripts/sample_paired_diffusion.py \
+  --max-trials 4 \
+  --setting both \
+  --ddim-steps 200 \
+  --noise-timestep 500 \
+  --output-dir hcml_project/outputs/generated_smoke_elasticface_arc_t500 \
+  --device cuda
+```
+
+The default behavior still uses the final training timestep, `T-1`, which is
+999 for a 1000-step diffusion model. The `--noise-timestep` option is only for
+controlled debugging/ablation runs. A smaller value keeps more information from
+the morph latent before reverse sampling, so it can help us check whether the
+very blurry outputs are caused by starting from almost pure noise.
+
 ## Next planned steps
 
 ### 10. Evaluate generated recovery images
@@ -617,6 +635,16 @@ Kaggle command after smoke generation:
 
 ```bash
 python hcml_project/scripts/evaluate_generated_recovery.py \
+  --device cuda
+```
+
+To evaluate a diagnostic output directory, point the evaluator to that
+directory's report:
+
+```bash
+python hcml_project/scripts/evaluate_generated_recovery.py \
+  --sampling-report-csv hcml_project/outputs/generated_smoke_elasticface_arc_t500/sampling_report.csv \
+  --output-csv hcml_project/metadata/mad22_opencv_smoke_generated_recovery_eval_t500.csv \
   --device cuda
 ```
 

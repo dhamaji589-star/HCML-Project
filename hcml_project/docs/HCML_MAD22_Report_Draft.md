@@ -1,90 +1,92 @@
 # Hidden Identity Recovery from Face Morphing Attacks using NegFaceDiff and AdaptDiff
 
 **Student:** Vishu  
-**Project:** HCML MAD22 Project  
+**Project:** HCML MAD22 Project
 
 ## Abstract
 
-Face morphing attacks combine two identities into one facial image, creating a sample that can be accepted as both contributors by a face recognition system. This project evaluates whether a pretrained identity-conditioned diffusion model can recover the hidden contributor when the morph image and one known contributor are given. I used NegFaceDiff and AdaptDiff as two negative-guidance sampling strategies on the MAD22 morphing subsets: OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. Identity contexts and evaluation embeddings were extracted with ElasticFaceArc. Across 40 morph images per method, corresponding to 80 directed recovery trials per method, AdaptDiff consistently outperformed NegFaceDiff. The generated images were visually blurry, but the embedding-based recovery metric showed that AdaptDiff more often produced samples closer to the hidden identity than to the known identity.
+Face morphing attacks combine identity information from two subjects into one facial image. This project studies a hidden-identity recovery setting: given a morph image and one known contributor, the goal is to generate an image that is closer to the other contributor. The implemented pipeline uses pretrained components from NegFaceDiff/AdaptDiff, a latent diffusion model trained on CASIA, a pretrained latent autoencoder, and ElasticFaceArc identity embeddings. Five MAD22 morphing subsets were evaluated independently: OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. The experiments show a consistent pattern: AdaptDiff gives higher hidden-identity recovery success than NegFaceDiff for every morphing method. The visual outputs remain blurry, so the main conclusion is about identity recovery in embedding space rather than photorealistic face reconstruction.
 
 ## 1. Introduction
 
-Face morphing attacks are a security risk for biometric systems because a single morphed image can contain identity information from two people. If such an image is used in an identity document, both contributing subjects may be able to match against it. The task in this project is not morphing attack detection, but **hidden identity recovery**: given a morph image and one known contributing identity, generate an image that is closer to the other, hidden identity.
+Face morphing is a biometric attack in which two face identities are blended into one image. Such an image can be problematic because it may retain enough information from both contributors to match against either person. In this project, the question is not whether a morph can be detected, but whether one can recover information about the unknown contributor when the other contributor is already known.
 
-For a morph image created from identities A and B, two directed tasks can be formed. In the first task, A is known and B is hidden; in the second task, B is known and A is hidden. This directional setup is important because the model is guided away from the known identity while using the morph image as the positive identity condition.
+For a morph created from identities A and B, the recovery task is directional. If A is given as the known identity, B is the hidden target; if B is given, A becomes the hidden target. Therefore, each morph image is converted into two directed recovery trials. This design makes the problem explicit: the model should use the morph as a source of mixed identity information, while suppressing the known identity so that the generated sample moves toward the hidden one.
 
 ## 2. Method
 
-The pipeline uses pretrained models and performs inference only. No model was trained from scratch. First, dataset filenames were converted into trial metadata containing the morph image, known identity image, and hidden identity image. Each morph therefore creates two directed recovery trials.
+The project uses pretrained models and performs inference only. No diffusion model, autoencoder, or face-recognition model was trained during this work.
 
-Identity embeddings were extracted using ElasticFaceArc with an iresnet100 backbone. The morph embedding was used as the positive context, the known identity embedding was used as the negative context, and the hidden identity embedding was kept only for evaluation. Each identity context is a 512-dimensional embedding.
+The first part of the pipeline prepares metadata. Each trial stores the path to the morph image, the known identity image, and the hidden identity image. The identity branch then uses ElasticFaceArc with an iresnet100 backbone to extract 512-dimensional embeddings. The morph embedding is used as the positive identity context, the known identity embedding is used as the negative context, and the hidden identity embedding is reserved for evaluation.
 
-The image generation branch used the pretrained DM_CASIA latent diffusion model from the NegFaceDiff repository. The morph image was encoded into latent space using the pretrained first-stage autoencoder. Noise was then added using the forward diffusion process with a 1000-step schedule, matching the setting used for the provided model. Sampling was performed with DDIM using 200 reverse steps.
+The image branch works in latent space. The morph image is encoded by the pretrained first-stage autoencoder. Forward diffusion noise is added to the morph latent using the 1000-step schedule expected by the provided DM_CASIA model. During sampling, DDIM is used with 200 denoising steps. The generated latent is then decoded back into an image by the autoencoder decoder.
 
-Two sampling settings were evaluated:
+Two guidance settings are compared:
 
-| Setting | Adapt | Negative weight | Description |
+| Setting | Adapt flag | Negative weight | Interpretation |
 |---|---:|---:|---|
 | NegFaceDiff | false | 0.5 | Fixed negative identity guidance |
 | AdaptDiff | true | 1.0 | Adaptive negative identity guidance |
 
-In simple terms, both settings try to preserve information from the morph while moving away from the known identity. The difference is that NegFaceDiff uses a fixed negative guidance strength, while AdaptDiff changes the guidance behavior during the denoising process.
+Both settings use the same broad idea: keep useful identity information from the morph while pushing the generation away from the known contributor. The difference is that NegFaceDiff applies a fixed negative guidance strength, whereas AdaptDiff changes the negative guidance behavior during the denoising process.
 
-## 3. Experiments
+## 3. Experimental Protocol
 
-Experiments were performed on the MAD22 dataset. The evaluated morphing methods were OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. Following the project instruction, each morphing method was evaluated independently; results were not merged into one global metric.
+Experiments were performed on five MAD22 morphing subsets: OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. Each subset was evaluated separately because morphing algorithms can preserve identity information in different ways. Keeping the subsets separate also follows the project instruction not to merge all morphing methods into a single aggregate metric.
 
-For each method, I evaluated 40 morph images. Since each morph produces two directed recovery trials, this gives 80 trials per method. For every trial, both NegFaceDiff and AdaptDiff generated one recovered image. The generated image was then embedded using ElasticFaceArc and compared against the hidden and known identity embeddings using cosine similarity.
-
-The success condition was:
+For each directed trial, both NegFaceDiff and AdaptDiff generated one candidate hidden-identity image. The generated image was embedded using ElasticFaceArc and compared to the known and hidden identity embeddings using cosine similarity. A generation is counted as successful when:
 
 ```text
 cosine(generated, hidden) > cosine(generated, known)
 ```
 
-I also computed the margin:
+The mean margin is computed as:
 
 ```text
-margin = cosine(generated, hidden) - cosine(generated, known)
+cosine(generated, hidden) - cosine(generated, known)
 ```
 
-A positive margin means the generated image is closer to the hidden identity than to the known identity in the face-recognition embedding space.
+A larger positive margin means that, according to the face-recognition embedding space, the generated sample is more clearly shifted toward the hidden contributor and away from the known contributor.
 
 ## 4. Results
 
 ![Success rate by morphing method](../../results/success_rate_by_method.png)
 
-**Table 1: Hidden identity recovery results.** Each method uses 40 morph images and 80 directed trials. The margin is the mean value of cosine(generated, hidden) minus cosine(generated, known).
+**Table 1: Hidden-identity recovery results.** Success is reported as a percentage. The margin is the mean hidden-minus-known cosine similarity difference.
 
 | Morphing method | NegFaceDiff success | NegFaceDiff margin | AdaptDiff success | AdaptDiff margin |
 |---|---:|---:|---:|---:|
-| OpenCV | 48/80 (60.0%) | 0.069954 | 50/80 (62.5%) | 0.090291 |
-| FaceMorpher | 60/80 (75.0%) | 0.045358 | 66/80 (82.5%) | 0.059136 |
-| MIPGAN-I | 64/80 (80.0%) | 0.063586 | 71/80 (88.8%) | 0.084853 |
-| MIPGAN-II | 58/80 (72.5%) | 0.060798 | 64/80 (80.0%) | 0.078214 |
-| WebMorph | 57/80 (71.2%) | 0.063933 | 60/80 (75.0%) | 0.087545 |
+| OpenCV | 60.0% | 0.069954 | 62.5% | 0.090291 |
+| FaceMorpher | 75.0% | 0.045358 | 82.5% | 0.059136 |
+| MIPGAN-I | 80.0% | 0.063586 | 88.8% | 0.084853 |
+| MIPGAN-II | 72.5% | 0.060798 | 80.0% | 0.078214 |
+| WebMorph | 71.2% | 0.063933 | 75.0% | 0.087545 |
 
-AdaptDiff achieved higher success than NegFaceDiff for every morphing method. The largest gain was observed for MIPGAN-I, where AdaptDiff improved from 64/80 to 71/80 successful directed trials. AdaptDiff also produced higher mean margins in all five groups, suggesting that its successful generations were not only more frequent but also more separated from the known identity in embedding space.
+AdaptDiff improves over NegFaceDiff for all five morphing methods. This happens not only in the success percentage, but also in the mean margin. The margin result is important because it shows that AdaptDiff is not merely changing a few borderline cases; on average, its generated embeddings are more strongly separated from the known identity and closer to the hidden one.
 
-MIPGAN-I was the easiest subset for both methods, while OpenCV was the hardest. This suggests that different morph generation algorithms preserve and distribute identity information differently. Since each subset was evaluated separately, this method-dependent behavior is visible instead of being hidden by an aggregated metric.
+The easiest subset in this evaluation is MIPGAN-I, where both methods achieve their strongest recovery rates. OpenCV is the most difficult subset. This variation supports the decision to report each morphing method independently: different morphing procedures create different recovery conditions.
 
 ## 5. Qualitative Analysis
 
-![Qualitative examples](../../results/qualitative_examples.png)
+![Best qualitative examples](../../results/qualitative_best_examples.png)
 
-The generated samples often have low visual fidelity: faces are blurry, sometimes color-shifted, and not always convincing to a human observer. However, the quantitative identity metric can still show a positive recovery signal because it measures similarity in a face-recognition embedding space rather than human-perceived image quality.
+The qualitative examples show the known identity, input morph, hidden identity, and the two generated outputs. These examples were selected from successful AdaptDiff cases with strong positive margins, so they represent clearer cases according to the embedding metric.
 
-This difference is important. A generated image may not look photorealistic, but it can still contain identity cues that ElasticFaceArc maps closer to the hidden contributor than to the known contributor. For the report, this means the results should be interpreted as **identity recovery in embedding space**, not as high-quality face reconstruction.
+A visual limitation is still obvious. The generated samples are often blurry, color-shifted, and less realistic than the original MAD22 images. This means the method should not be described as producing clean photo-quality reconstructions. Instead, the stronger and more accurate interpretation is that the generated images contain identity cues that ElasticFaceArc places closer to the hidden contributor than to the known contributor.
+
+This distinction matters for the conclusion. A human observer may not always see a convincing recovered face, but the embedding-space comparison can still indicate that some hidden identity information has been recovered. Therefore, the project demonstrates an identity-recovery signal, not a complete visual reconstruction solution.
 
 ## 6. Discussion
 
-The main result is that adaptive negative guidance is more effective than fixed negative guidance in this experimental setting. AdaptDiff likely benefits from not applying the same negative pressure throughout the whole denoising process. Early denoising stages control broad image structure, while later stages refine identity and appearance. A fixed negative weight can restrict the generation process too strongly, while adaptive guidance can balance exploration and identity separation more flexibly.
+The consistent advantage of AdaptDiff suggests that adaptive negative guidance is better suited to this hidden-identity recovery task than fixed negative guidance. One possible explanation is that diffusion sampling changes character over time. Earlier denoising steps influence broad structure, while later steps refine details and identity-related features. If the negative condition is fixed throughout the whole process, the model may be constrained too rigidly. Adaptive guidance can allow broader exploration early and stronger identity separation later.
 
-The main limitation is visual quality. The project used pretrained model weights and did not fine-tune the diffusion model or autoencoder on MAD22. The image resolution and latent autoencoder also limit fine details. Another limitation is that ElasticFaceArc was used both for identity conditioning and for evaluation, which is consistent with the project instructions but may favor identity information captured by that specific model. A future extension would evaluate the generated images with an additional independent face-recognition model.
+There are also important limitations. First, all main components are pretrained; the project does not fine-tune the diffusion model for MAD22. Second, ElasticFaceArc is used both for conditioning and evaluation. This is consistent with the project setup, but an additional independent face-recognition model would provide a stronger external check. Third, visual quality remains weak, which limits the practical interpretability of individual generated images.
+
+Despite these limitations, the pipeline is complete and reproducible: metadata preparation, alignment, identity embedding extraction, latent diffusion sampling, image decoding, and embedding-based evaluation are all implemented as separate steps.
 
 ## 7. Conclusion
 
-This project implemented an end-to-end hidden identity recovery pipeline for MAD22 morphing attacks using NegFaceDiff and AdaptDiff. The pipeline prepares directed trials, extracts ElasticFaceArc identity contexts, generates recovered images with a pretrained latent diffusion model, and evaluates whether the generated image is closer to the hidden or known identity. Across all evaluated morphing methods, AdaptDiff outperformed NegFaceDiff in both success rate and mean identity margin. The results support the usefulness of adaptive negative guidance, while the qualitative outputs show that identity recovery and visual realism remain separate challenges.
+This project implemented and evaluated a hidden-identity recovery pipeline for MAD22 face morphing attacks. The results show that AdaptDiff performs better than NegFaceDiff across all evaluated morphing methods. The main evidence is the consistent increase in success percentage and mean hidden-minus-known identity margin. The generated images are not visually high quality, but they often move in the correct identity direction in ElasticFaceArc embedding space. Overall, adaptive negative guidance appears more effective than fixed negative guidance for this recovery setting.
 
 ## References
 

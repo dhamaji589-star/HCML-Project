@@ -1,365 +1,391 @@
-"""Create a formatted Word report without external docx dependencies."""
+"""Create a polished Word report using python-docx."""
 
 from __future__ import annotations
 
-import html
-import zipfile
+import csv
 from pathlib import Path
 
-from PIL import Image
+from docx import Document
+from docx.enum.section import WD_SECTION
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Cm, Inches, Pt, RGBColor
+from PIL import Image, ImageDraw, ImageFont
 
 
 OUTPUT = Path("hcml_project/docs/HCML_MAD22_Report_Draft.docx")
-SUCCESS_FIGURE = Path("results/success_rate_by_method.png")
+SUMMARY_CSV = Path("results/summary_method_results.csv")
+SUCCESS_FIGURE = Path("results/success_rate_by_method_horizontal.png")
 QUALITATIVE_FIGURE = Path("results/qualitative_best_examples.png")
 
 
-def xml_escape(text: str) -> str:
-    return html.escape(text, quote=False)
+def set_columns(section, count: int, space_twips: int = 420) -> None:
+    sect_pr = section._sectPr
+    cols = sect_pr.xpath("./w:cols")
+    cols = cols[0] if cols else OxmlElement("w:cols")
+    cols.set(qn("w:num"), str(count))
+    cols.set(qn("w:space"), str(space_twips))
+    if not sect_pr.xpath("./w:cols"):
+        sect_pr.append(cols)
 
 
-def run(text: str, bold: bool = False, italic: bool = False, size: int | None = None) -> str:
-    props = []
-    if bold:
-        props.append("<w:b/>")
-    if italic:
-        props.append("<w:i/>")
-    if size:
-        props.append(f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>')
-    rpr = f"<w:rPr>{''.join(props)}</w:rPr>" if props else ""
-    return f"<w:r>{rpr}<w:t xml:space=\"preserve\">{xml_escape(text)}</w:t></w:r>"
+def set_cell_shading(cell, fill: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    shading = OxmlElement("w:shd")
+    shading.set(qn("w:fill"), fill)
+    tc_pr.append(shading)
 
 
-def para(
-    text: str = "",
-    style: str = "BodyText",
-    align: str | None = None,
-    bold: bool = False,
-    italic: bool = False,
-    size: int | None = None,
-) -> str:
-    align_xml = f'<w:jc w:val="{align}"/>' if align else ""
-    return (
-        f"<w:p><w:pPr><w:pStyle w:val=\"{style}\"/>{align_xml}</w:pPr>"
-        f"{run(text, bold=bold, italic=italic, size=size)}</w:p>"
+def set_cell_text(cell, text: str, bold: bool = False) -> None:
+    cell.text = ""
+    paragraph = cell.paragraphs[0]
+    paragraph.paragraph_format.space_after = Pt(0)
+    run = paragraph.add_run(text)
+    run.bold = bold
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(8.2)
+
+
+def add_para(doc: Document, text: str, style: str | None = None, bold_start: str | None = None):
+    paragraph = doc.add_paragraph(style=style)
+    paragraph.paragraph_format.space_after = Pt(4)
+    paragraph.paragraph_format.line_spacing = 1.03
+    if bold_start and text.startswith(bold_start):
+        first = paragraph.add_run(bold_start)
+        first.bold = True
+        rest = paragraph.add_run(text[len(bold_start) :])
+        for run in [first, rest]:
+            run.font.name = "Times New Roman"
+            run.font.size = Pt(9.5)
+    else:
+        run = paragraph.add_run(text)
+        run.font.name = "Times New Roman"
+        run.font.size = Pt(9.5)
+    return paragraph
+
+
+def add_heading(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.paragraph_format.space_before = Pt(7)
+    paragraph.paragraph_format.space_after = Pt(3)
+    run = paragraph.add_run(text)
+    run.bold = True
+    run.font.name = "Arial"
+    run.font.size = Pt(10.2)
+
+
+def add_caption(doc: Document, text: str) -> None:
+    paragraph = doc.add_paragraph()
+    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    paragraph.paragraph_format.space_after = Pt(4)
+    run = paragraph.add_run(text)
+    run.italic = True
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(8.2)
+
+
+def success_to_percent(value: str) -> float:
+    successes, trials = value.split("/")
+    return 100.0 * int(successes) / int(trials)
+
+
+def read_summary() -> list[dict[str, str]]:
+    with SUMMARY_CSV.open("r", newline="", encoding="utf-8") as csv_file:
+        return list(csv.DictReader(csv_file))
+
+
+def create_horizontal_success_plot() -> None:
+    rows = read_summary()
+    methods = [row["method"] for row in rows]
+    neg = [success_to_percent(row["negfacediff_success"]) for row in rows]
+    adapt = [success_to_percent(row["adaptdiff_success"]) for row in rows]
+
+    width, height = 1100, 620
+    left, right, top, bottom = 165, 70, 55, 55
+    row_gap = 92
+    bar_height = 24
+    max_value = 100
+    plot_width = width - left - right
+    image = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(image)
+    try:
+        title_font = ImageFont.truetype("arial.ttf", 30)
+        font = ImageFont.truetype("arial.ttf", 23)
+        small_font = ImageFont.truetype("arial.ttf", 19)
+    except OSError:
+        title_font = ImageFont.load_default()
+        font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    draw.text((left, 18), "Hidden-identity recovery success rate", fill="black", font=title_font)
+    draw.rectangle((left + 565, 24, left + 590, 49), fill="#4C78A8")
+    draw.text((left + 600, 22), "NegFaceDiff", fill="black", font=small_font)
+    draw.rectangle((left + 745, 24, left + 770, 49), fill="#F58518")
+    draw.text((left + 780, 22), "AdaptDiff", fill="black", font=small_font)
+
+    axis_top = top + 35
+    for tick in range(0, 101, 20):
+        x = left + tick / max_value * plot_width
+        draw.line((x, axis_top, x, height - bottom), fill="#DDDDDD", width=1)
+        draw.text((x - 14, height - bottom + 10), str(tick), fill="black", font=small_font)
+    draw.text((left + plot_width / 2 - 65, height - 25), "Success (%)", fill="black", font=small_font)
+
+    for index, method in enumerate(methods):
+        y = axis_top + index * row_gap + 20
+        draw.text((18, y + 11), method, fill="black", font=font)
+        for offset, value, color in [(0, neg[index], "#4C78A8"), (bar_height + 8, adapt[index], "#F58518")]:
+            bar_y = y + offset
+            bar_width = value / max_value * plot_width
+            draw.rectangle((left, bar_y, left + bar_width, bar_y + bar_height), fill=color)
+            draw.text((left + bar_width + 8, bar_y - 1), f"{value:.1f}%", fill="black", font=small_font)
+
+    SUCCESS_FIGURE.parent.mkdir(parents=True, exist_ok=True)
+    image.save(SUCCESS_FIGURE)
+
+
+def configure_styles(doc: Document) -> None:
+    normal = doc.styles["Normal"]
+    normal.font.name = "Times New Roman"
+    normal.font.size = Pt(9.5)
+
+    for style_name in ["Title", "Heading 1", "Heading 2"]:
+        style = doc.styles[style_name]
+        style.font.name = "Arial"
+        style.font.color.rgb = RGBColor(0, 0, 0)
+
+
+def add_title_and_abstract(doc: Document) -> None:
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title.paragraph_format.space_after = Pt(2)
+    run = title.add_run("Hidden Identity Recovery from Face Morphing Attacks using NegFaceDiff and AdaptDiff")
+    run.bold = True
+    run.font.name = "Arial"
+    run.font.size = Pt(15)
+
+    meta = doc.add_paragraph()
+    meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    meta.paragraph_format.space_after = Pt(8)
+    run = meta.add_run("Vishu | HCML MAD22 Project")
+    run.italic = True
+    run.font.name = "Times New Roman"
+    run.font.size = Pt(9.5)
+
+    add_heading(doc, "Abstract")
+    add_para(
+        doc,
+        "Face morphing attacks combine identity information from two subjects into one facial image. "
+        "This project investigates hidden-identity recovery: given a morph image and one known contributor, "
+        "the objective is to generate a sample that moves toward the other contributor. The implemented "
+        "pipeline uses pretrained NegFaceDiff/AdaptDiff components, the DM_CASIA latent diffusion model, a "
+        "pretrained latent autoencoder, and ElasticFaceArc identity embeddings. Five MAD22 morphing subsets "
+        "were evaluated independently: OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. AdaptDiff "
+        "achieved higher recovery success and higher mean hidden-minus-known identity margins for every "
+        "morphing method. The generated samples are visually imperfect, so the conclusion is framed as "
+        "identity recovery in embedding space rather than photorealistic reconstruction.",
     )
 
 
-def caption(text: str) -> str:
-    return para(text, style="Caption", italic=True)
-
-
-def heading(text: str, level: int = 1) -> str:
-    return para(text, style=f"Heading{level}")
-
-
-def image_paragraph(rid: str, image_path: Path, width_inches: float) -> str:
-    with Image.open(image_path) as image:
-        width_px, height_px = image.size
-    height_inches = width_inches * height_px / width_px
-    cx = int(width_inches * 914400)
-    cy = int(height_inches * 914400)
-    return f"""
-<w:p>
-  <w:pPr><w:jc w:val="center"/></w:pPr>
-  <w:r>
-    <w:drawing>
-      <wp:inline distT="0" distB="0" distL="0" distR="0">
-        <wp:extent cx="{cx}" cy="{cy}"/>
-        <wp:effectExtent l="0" t="0" r="0" b="0"/>
-        <wp:docPr id="1" name="{xml_escape(image_path.name)}"/>
-        <wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>
-        <a:graphic>
-          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
-            <pic:pic>
-              <pic:nvPicPr>
-                <pic:cNvPr id="0" name="{xml_escape(image_path.name)}"/>
-                <pic:cNvPicPr/>
-              </pic:nvPicPr>
-              <pic:blipFill>
-                <a:blip r:embed="{rid}"/>
-                <a:stretch><a:fillRect/></a:stretch>
-              </pic:blipFill>
-              <pic:spPr>
-                <a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>
-                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-              </pic:spPr>
-            </pic:pic>
-          </a:graphicData>
-        </a:graphic>
-      </wp:inline>
-    </w:drawing>
-  </w:r>
-</w:p>
-"""
-
-
-def table(rows: list[list[str]]) -> str:
-    column_count = len(rows[0])
-    grid = "".join('<w:gridCol w:w="1800"/>' for _ in range(column_count))
-    table_rows = []
-    for row_index, row in enumerate(rows):
-        cells = []
-        for cell in row:
-            shading = '<w:shd w:fill="EDEDED"/>' if row_index == 0 else ""
-            cells.append(
-                "<w:tc>"
-                f"<w:tcPr><w:tcW w:w=\"1800\" w:type=\"dxa\"/>{shading}</w:tcPr>"
-                f"{para(cell, style='TableText', bold=row_index == 0)}"
-                "</w:tc>"
-            )
-        table_rows.append(f"<w:tr>{''.join(cells)}</w:tr>")
-    return (
-        "<w:tbl>"
-        "<w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/>"
-        "<w:tblLook w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"0\" "
-        "w:lastColumn=\"0\" w:noHBand=\"0\" w:noVBand=\"1\"/></w:tblPr>"
-        f"<w:tblGrid>{grid}</w:tblGrid>{''.join(table_rows)}</w:tbl>"
-    )
-
-
-def styles_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:style w:type="paragraph" w:default="1" w:styleId="BodyText">
-    <w:name w:val="Body Text"/>
-    <w:pPr><w:spacing w:after="80" w:line="252" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="21"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading1">
-    <w:name w:val="heading 1"/><w:basedOn w:val="BodyText"/>
-    <w:pPr><w:spacing w:before="120" w:after="40"/><w:keepNext/></w:pPr>
-    <w:rPr><w:b/><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="25"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Heading2">
-    <w:name w:val="heading 2"/><w:basedOn w:val="BodyText"/>
-    <w:pPr><w:spacing w:before="80" w:after="30"/><w:keepNext/></w:pPr>
-    <w:rPr><w:b/><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="22"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="Caption">
-    <w:name w:val="caption"/><w:basedOn w:val="BodyText"/>
-    <w:pPr><w:spacing w:after="60"/></w:pPr>
-    <w:rPr><w:i/><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="18"/></w:rPr>
-  </w:style>
-  <w:style w:type="paragraph" w:styleId="TableText">
-    <w:name w:val="table text"/><w:basedOn w:val="BodyText"/>
-    <w:pPr><w:spacing w:after="0" w:line="220" w:lineRule="auto"/></w:pPr>
-    <w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="18"/></w:rPr>
-  </w:style>
-  <w:style w:type="table" w:styleId="TableGrid">
-    <w:name w:val="Table Grid"/>
-    <w:tblPr><w:tblBorders>
-      <w:top w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-      <w:left w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-      <w:bottom w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-      <w:right w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-      <w:insideH w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-      <w:insideV w:val="single" w:sz="4" w:space="0" w:color="888888"/>
-    </w:tblBorders></w:tblPr>
-  </w:style>
-</w:styles>
-"""
-
-
-def document_xml() -> str:
-    parts = [
-        para(
-            "Hidden Identity Recovery from Face Morphing Attacks using NegFaceDiff and AdaptDiff",
-            style="Heading1",
-            align="center",
-            size=30,
-        ),
-        para("Student: Vishu | HCML MAD22 Project", align="center", italic=True),
-        heading("Abstract"),
-        para(
-            "Face morphing attacks combine identity information from two subjects into one facial image. "
-            "This project studies hidden-identity recovery: given a morph image and one known contributor, "
-            "the goal is to generate an image that is closer to the other contributor. The pipeline uses "
-            "pretrained NegFaceDiff/AdaptDiff components, DM_CASIA, a latent autoencoder, and ElasticFaceArc "
-            "identity embeddings. Five MAD22 morphing subsets were evaluated independently. The experiments "
-            "show that AdaptDiff gives higher recovery success than NegFaceDiff for every morphing method. "
-            "The visual outputs remain blurry, so the main conclusion is about identity recovery in embedding "
-            "space rather than photorealistic face reconstruction."
-        ),
-        heading("1. Introduction"),
-        para(
-            "Face morphing is a biometric attack in which two face identities are blended into one image. "
-            "Such an image can retain enough information from both contributors to match against either "
-            "person. This project asks whether information about the unknown contributor can be recovered "
-            "when the other contributor is already known."
-        ),
-        para(
-            "For a morph created from identities A and B, the recovery task is directional. If A is known, "
-            "B is the hidden target; if B is known, A becomes the hidden target. Each morph is therefore "
-            "converted into two directed recovery trials."
-        ),
-        heading("2. Method"),
-        para(
-            "The work uses pretrained models and performs inference only. Metadata preparation stores the "
-            "morph image, known identity image, and hidden identity image for each trial. ElasticFaceArc with "
-            "an iresnet100 backbone extracts 512-dimensional embeddings. The morph embedding is the positive "
-            "context, the known identity embedding is the negative context, and the hidden identity embedding "
-            "is reserved for evaluation."
-        ),
-        para(
-            "The image branch works in latent space. The morph image is encoded with the first-stage "
-            "autoencoder, noised with the 1000-step forward schedule expected by DM_CASIA, sampled with DDIM "
-            "for 200 denoising steps, and decoded back into an image."
-        ),
-        table(
-            [
-                ["Setting", "Adapt flag", "Negative weight", "Interpretation"],
-                ["NegFaceDiff", "false", "0.5", "Fixed negative identity guidance"],
-                ["AdaptDiff", "true", "1.0", "Adaptive negative identity guidance"],
-            ]
-        ),
-        heading("3. Experimental Protocol"),
-        para(
-            "The evaluated MAD22 morphing subsets are OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. "
-            "Each subset is reported separately because different morphing algorithms can preserve identity "
-            "information differently."
-        ),
-        para(
-            "For each directed trial, both NegFaceDiff and AdaptDiff generate one candidate recovery image. "
-            "The generated image is embedded with ElasticFaceArc and compared with the known and hidden "
-            "identity embeddings. A trial is successful when cosine(generated, hidden) is greater than "
-            "cosine(generated, known). The margin is cosine(generated, hidden) minus cosine(generated, known)."
-        ),
-        heading("4. Results"),
-        image_paragraph("rIdImage1", SUCCESS_FIGURE, 6.2),
-        caption("Figure 1. Hidden-identity recovery success rate for each morphing method."),
-        table(
-            [
-                ["Morphing method", "NegFaceDiff success", "NegFaceDiff margin", "AdaptDiff success", "AdaptDiff margin"],
-                ["OpenCV", "60.0%", "0.069954", "62.5%", "0.090291"],
-                ["FaceMorpher", "75.0%", "0.045358", "82.5%", "0.059136"],
-                ["MIPGAN-I", "80.0%", "0.063586", "88.8%", "0.084853"],
-                ["MIPGAN-II", "72.5%", "0.060798", "80.0%", "0.078214"],
-                ["WebMorph", "71.2%", "0.063933", "75.0%", "0.087545"],
-            ]
-        ),
-        caption("Table 1. Success is reported as a percentage. The margin is the mean hidden-minus-known cosine difference."),
-        para(
-            "AdaptDiff improves over NegFaceDiff for every morphing method. The improvement appears both in "
-            "success percentage and in mean margin, meaning that the generated embeddings are more strongly "
-            "shifted toward the hidden identity and away from the known identity."
-        ),
-        heading("5. Qualitative Analysis"),
-        image_paragraph("rIdImage2", QUALITATIVE_FIGURE, 6.1),
-        caption(
-            "Figure 2. Qualitative examples selected from successful AdaptDiff cases with strong positive margins."
-        ),
-        para(
-            "The generated images are often blurry and color-shifted. Therefore, the method should not be "
-            "described as clean photo-quality reconstruction. The better interpretation is that the generated "
-            "images contain identity cues that ElasticFaceArc places closer to the hidden contributor."
-        ),
-        heading("6. Discussion and Conclusion"),
-        para(
-            "The consistent advantage of AdaptDiff suggests that adaptive negative guidance is better suited "
-            "to this recovery setting than fixed negative guidance. A likely reason is that diffusion sampling "
-            "changes over time: early steps influence broad structure, while later steps refine details and "
-            "identity-related features. Adaptive guidance can balance exploration and identity separation more "
-            "flexibly than a fixed negative weight."
-        ),
-        para(
-            "The main limitations are visual quality, no task-specific fine-tuning, and the use of ElasticFaceArc "
-            "for both conditioning and evaluation. Even with these limitations, the pipeline is complete and "
-            "reproducible: it prepares metadata, aligns faces, extracts identity embeddings, samples with the "
-            "latent diffusion model, decodes generated images, and evaluates them in embedding space."
-        ),
-        heading("References"),
-        para(
-            "[1] E. Caldeira, T. Chettaoui, N. Damer, and F. Boutros, AdaptDiff: Adaptive Guidance in "
-            "Diffusion Models for Diverse and Identity-Consistent Face Synthesis, 2026. Code: "
-            "https://github.com/EduardaCaldeira/NegFaceDiff/"
-        ),
-        para(
-            "[2] M. Huber et al., SYN-MAD 2022: Competition on Face Morphing Attack Detection Based on "
-            "Privacy-aware Synthetic Training Data, IJCB, 2022. Code: https://github.com/marcohuber/SYN-MAD-2022"
-        ),
-        para(
-            "[3] F. Boutros, N. Damer, F. Kirchbuchner, and A. Kuijper, ElasticFace: Elastic Margin Loss "
-            "for Deep Face Recognition, CVPR Workshops, 2022."
-        ),
-        para("[4] J. Deng, J. Guo, N. Xue, and S. Zafeiriou, ArcFace, CVPR, 2019."),
-        para("[5] J. Ho, A. Jain, and P. Abbeel, Denoising Diffusion Probabilistic Models, NeurIPS, 2020."),
-        para("[6] J. Song, C. Meng, and S. Ermon, Denoising Diffusion Implicit Models, ICLR, 2021."),
-        para("[7] R. Rombach et al., High-Resolution Image Synthesis with Latent Diffusion Models, CVPR, 2022."),
+def add_results_table(doc: Document) -> None:
+    rows = [
+        ["Morphing method", "NegFaceDiff success", "NegFaceDiff margin", "AdaptDiff success", "AdaptDiff margin"],
+        ["OpenCV", "60.0%", "0.069954", "62.5%", "0.090291"],
+        ["FaceMorpher", "75.0%", "0.045358", "82.5%", "0.059136"],
+        ["MIPGAN-I", "80.0%", "0.063586", "88.8%", "0.084853"],
+        ["MIPGAN-II", "72.5%", "0.060798", "80.0%", "0.078214"],
+        ["WebMorph", "71.2%", "0.063933", "75.0%", "0.087545"],
     ]
-    section = (
-        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
-        '<w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900" '
-        'w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
-    )
-    return (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" '
-        'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
-        'xmlns:o="urn:schemas-microsoft-com:office:office" '
-        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-        'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
-        'xmlns:v="urn:schemas-microsoft-com:vml" '
-        'xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" '
-        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
-        'xmlns:w10="urn:schemas-microsoft-com:office:word" '
-        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
-        'xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" '
-        'xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" '
-        'xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" '
-        'xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" '
-        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
-        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
-        'mc:Ignorable="w14 wp14"><w:body>'
-        + "".join(parts)
-        + section
-        + "</w:body></w:document>"
+    table = doc.add_table(rows=len(rows), cols=len(rows[0]))
+    table.style = "Table Grid"
+    table.autofit = True
+    for row_index, row in enumerate(rows):
+        for col_index, text in enumerate(row):
+            set_cell_text(table.cell(row_index, col_index), text, bold=row_index == 0)
+            if row_index == 0:
+                set_cell_shading(table.cell(row_index, col_index), "EDEDED")
+    add_caption(
+        doc,
+        "Table 1. Success is reported as a percentage. The margin is the mean cosine(generated, hidden) "
+        "minus cosine(generated, known).",
     )
 
 
-def content_types_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Default Extension="png" ContentType="image/png"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-</Types>
-"""
+def add_references(doc: Document) -> None:
+    refs = [
+        "[1] E. Caldeira, T. Chettaoui, N. Damer, and F. Boutros, AdaptDiff: Adaptive Guidance in Diffusion Models for Diverse and Identity-Consistent Face Synthesis, 2026. Code: https://github.com/EduardaCaldeira/NegFaceDiff/",
+        "[2] M. Huber et al., SYN-MAD 2022: Competition on Face Morphing Attack Detection Based on Privacy-aware Synthetic Training Data, IJCB, 2022. Code: https://github.com/marcohuber/SYN-MAD-2022",
+        "[3] F. Boutros, N. Damer, F. Kirchbuchner, and A. Kuijper, ElasticFace: Elastic Margin Loss for Deep Face Recognition, CVPR Workshops, 2022.",
+        "[4] J. Deng, J. Guo, N. Xue, and S. Zafeiriou, ArcFace: Additive Angular Margin Loss for Deep Face Recognition, CVPR, 2019.",
+        "[5] J. Ho, A. Jain, and P. Abbeel, Denoising Diffusion Probabilistic Models, NeurIPS, 2020.",
+        "[6] J. Song, C. Meng, and S. Ermon, Denoising Diffusion Implicit Models, ICLR, 2021.",
+        "[7] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, High-Resolution Image Synthesis with Latent Diffusion Models, CVPR, 2022.",
+    ]
+    add_heading(doc, "References")
+    for ref in refs:
+        paragraph = add_para(doc, ref)
+        paragraph.paragraph_format.left_indent = Cm(0.35)
+        paragraph.paragraph_format.first_line_indent = Cm(-0.35)
 
 
-def root_rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>
-"""
+def build_report() -> None:
+    create_horizontal_success_plot()
+    doc = Document()
+    configure_styles(doc)
 
+    section = doc.sections[0]
+    section.top_margin = Cm(1.5)
+    section.bottom_margin = Cm(1.5)
+    section.left_margin = Cm(1.45)
+    section.right_margin = Cm(1.45)
 
-def document_rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rIdImage1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/success_rate_by_method.png"/>
-  <Relationship Id="rIdImage2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/qualitative_best_examples.png"/>
-  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>
-"""
+    add_title_and_abstract(doc)
 
+    body_section = doc.add_section(WD_SECTION.CONTINUOUS)
+    set_columns(body_section, 2)
 
-def main() -> None:
+    add_heading(doc, "1. Introduction")
+    add_para(
+        doc,
+        "Face morphing is a biometric attack in which two identities are blended into a single face image. "
+        "A successful morph can contain enough information from both contributors to match against either "
+        "person in a face-recognition system. In this work, the goal is not to classify an image as bona fide "
+        "or morphed. Instead, the project studies whether the hidden contributor can be recovered when the "
+        "morph image and the other contributor are already known.",
+    )
+    add_para(
+        doc,
+        "The task is directional. For a morph created from identities A and B, one trial uses A as the known "
+        "identity and treats B as the hidden target, while the reverse trial uses B as known and A as hidden. "
+        "This formulation makes the guidance objective clear: use the mixed identity information contained in "
+        "the morph, but push the generated sample away from the known contributor.",
+    )
+
+    add_heading(doc, "2. Method")
+    add_para(
+        doc,
+        "The complete pipeline is built from pretrained components and performs inference only. Dataset "
+        "filenames are first converted into trial metadata containing the morph image, the known identity, and "
+        "the hidden identity. ElasticFaceArc with an iresnet100 backbone then extracts 512-dimensional identity "
+        "embeddings. The morph embedding is used as the positive context, the known identity embedding as the "
+        "negative context, and the hidden identity embedding only for evaluation.",
+    )
+    add_para(
+        doc,
+        "Image generation is performed in latent space. The morph image is encoded by the pretrained first-stage "
+        "autoencoder. Forward diffusion noise is added using the 1000-step schedule associated with the provided "
+        "DM_CASIA model. DDIM sampling then performs 200 reverse denoising steps, and the final latent is decoded "
+        "back into an image. This follows the practical shortcut recommended for sampling while keeping the "
+        "starting noise consistent with the model setup.",
+    )
+    add_para(
+        doc,
+        "Two guidance strategies are compared. NegFaceDiff uses fixed negative identity guidance with adapt=false "
+        "and weight=0.5. AdaptDiff uses adaptive negative guidance with adapt=true and weight=1.0. Both methods "
+        "try to retain identity information from the morph while suppressing the known contributor, but AdaptDiff "
+        "changes the strength of negative guidance during the denoising trajectory.",
+    )
+
+    add_heading(doc, "3. Experimental Protocol")
+    add_para(
+        doc,
+        "The evaluated MAD22 morphing subsets are OpenCV, FaceMorpher, MIPGAN-I, MIPGAN-II, and WebMorph. Each "
+        "subset is evaluated independently because morphing methods can distribute contributor identities in "
+        "different ways. Reporting them separately prevents one method from hiding the behavior of another.",
+    )
+    add_para(
+        doc,
+        "For each directed trial, both NegFaceDiff and AdaptDiff generate one candidate recovery image. The "
+        "generated image is embedded with ElasticFaceArc and compared with the known and hidden identity "
+        "embeddings using cosine similarity. A trial is successful when cosine(generated, hidden) is greater "
+        "than cosine(generated, known). The margin is the difference between these two similarities. A larger "
+        "positive margin indicates a clearer movement toward the hidden identity in embedding space.",
+    )
+
+    add_heading(doc, "4. Quantitative Results")
+    doc.add_picture(str(SUCCESS_FIGURE), width=Inches(3.05))
+    add_caption(doc, "Figure 1. Hidden-identity recovery success rate for each morphing method.")
+    add_results_table(doc)
+    add_para(
+        doc,
+        "AdaptDiff improves over NegFaceDiff for all five morphing methods. The improvement is visible in the "
+        "success percentage and in the mean margin. This is important because the margin measures more than a "
+        "binary success decision: it shows how strongly the generated embedding is separated from the known "
+        "identity and shifted toward the hidden contributor.",
+    )
+    add_para(
+        doc,
+        "MIPGAN-I is the easiest subset in this evaluation, while OpenCV is the hardest. This variation supports "
+        "the decision to keep results separated by morphing method. Different morphing algorithms appear to "
+        "leave different amounts or forms of recoverable identity information in the generated morph image.",
+    )
+
+    add_heading(doc, "5. Qualitative Results")
+    add_para(
+        doc,
+        "The qualitative examples were selected from successful AdaptDiff cases with strong positive margins. "
+        "They are useful because they show the complete recovery setup: known identity, input morph, hidden "
+        "identity, and both generated outputs.",
+    )
+
+    figure_section = doc.add_section(WD_SECTION.CONTINUOUS)
+    set_columns(figure_section, 1)
+    doc.add_picture(str(QUALITATIVE_FIGURE), width=Inches(6.25))
+    add_caption(
+        doc,
+        "Figure 2. Qualitative examples selected by positive AdaptDiff margin. The generated faces show an "
+        "identity signal but remain visually blurry.",
+    )
+
+    body_section_2 = doc.add_section(WD_SECTION.CONTINUOUS)
+    set_columns(body_section_2, 2)
+    add_para(
+        doc,
+        "The visual limitation is clear. The generated samples are often blurry, color-shifted, and less realistic "
+        "than the original MAD22 images. Therefore, the method should not be described as producing clean "
+        "photo-quality reconstructions. A more accurate interpretation is that the generated samples contain "
+        "identity cues that ElasticFaceArc places closer to the hidden contributor than to the known contributor.",
+    )
+
+    add_heading(doc, "6. Discussion")
+    add_para(
+        doc,
+        "The consistent advantage of AdaptDiff suggests that adaptive negative guidance is better suited to this "
+        "recovery task than fixed negative guidance. Diffusion sampling changes character over time: early steps "
+        "shape coarse structure, while later steps refine identity and appearance. Fixed negative guidance can "
+        "constrain the process uniformly, whereas adaptive guidance can allow broader exploration early and "
+        "stronger identity separation later.",
+    )
+    add_para(
+        doc,
+        "The main limitations are also important. First, no component was fine-tuned for this exact recovery task. "
+        "Second, ElasticFaceArc is used both for identity conditioning and for evaluation, so an independent "
+        "face-recognition model would be useful as a future check. Third, the generated images do not yet have "
+        "strong visual fidelity. These limitations mean the project should be framed as evidence of hidden-identity "
+        "recovery in embedding space, not as a final visual reconstruction system.",
+    )
+
+    add_heading(doc, "7. Conclusion")
+    add_para(
+        doc,
+        "This project implemented an end-to-end hidden-identity recovery pipeline for MAD22 morphing attacks. The "
+        "pipeline prepares directed trials, extracts ElasticFaceArc identity contexts, samples with the pretrained "
+        "latent diffusion model, decodes generated images, and evaluates them using cosine similarity in identity "
+        "embedding space. Across all evaluated morphing methods, AdaptDiff performs better than NegFaceDiff in "
+        "both success percentage and mean identity margin. The results support adaptive negative guidance as the "
+        "stronger strategy for this experimental setting, while also showing that visual realism remains an open "
+        "challenge.",
+    )
+
+    refs_section = doc.add_section(WD_SECTION.NEW_PAGE)
+    set_columns(refs_section, 1)
+    add_references(doc)
+
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(OUTPUT, "w", compression=zipfile.ZIP_DEFLATED) as docx:
-        docx.writestr("[Content_Types].xml", content_types_xml())
-        docx.writestr("_rels/.rels", root_rels_xml())
-        docx.writestr("word/_rels/document.xml.rels", document_rels_xml())
-        docx.writestr("word/styles.xml", styles_xml())
-        docx.writestr("word/document.xml", document_xml())
-        docx.write(SUCCESS_FIGURE, "word/media/success_rate_by_method.png")
-        docx.write(QUALITATIVE_FIGURE, "word/media/qualitative_best_examples.png")
+    doc.save(OUTPUT)
     print(f"Word report written: {OUTPUT}")
+    print(f"Horizontal success figure written: {SUCCESS_FIGURE}")
 
 
 if __name__ == "__main__":
-    main()
+    build_report()

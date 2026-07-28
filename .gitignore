@@ -1,1 +1,26 @@
+# Local/private data and downloaded archives
 MAD22/
+MAD22.zip
+DM_CASIA_cpd25/
+*.zip
+personal_archive_not_for_github/
+
+# Model weights and generated experiment artifacts
+hcml_project/model_assets/
+hcml_project/outputs/
+hcml_project/embeddings/
+hcml_project/sampling_inputs/
+NegFaceDiff/models/autoencoder/first_stage_encoder_state_dict.pt
+NegFaceDiff/models/autoencoder/first_stage_decoder_state_dict.pt
+
+# Generated metadata and evaluation reports
+hcml_project/metadata/*_aligned.csv
+hcml_project/metadata/*_embeddings.csv
+hcml_project/metadata/*_baseline_eval.csv
+hcml_project/metadata/*_sanity_eval.csv
+hcml_project/metadata/*generated_recovery_eval*.csv
+
+# Python/runtime caches
+__pycache__/
+*.pyc
+.ipynb_checkpoints/

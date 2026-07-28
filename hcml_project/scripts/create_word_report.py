@@ -285,6 +285,14 @@ def build_report() -> None:
         "try to retain identity information from the morph while suppressing the known contributor, but AdaptDiff "
         "changes the strength of negative guidance during the denoising trajectory.",
     )
+    add_para(
+        doc,
+        "The implementation was organized as a sequence of small scripts rather than one large notebook cell. "
+        "This made the workflow easier to verify: one script builds trial metadata, one builds the unique image "
+        "manifest, one aligns faces, one extracts ElasticFaceArc embeddings, one prepares paired contexts for "
+        "sampling, and one runs the diffusion model. This structure was helpful because intermediate CSV files "
+        "could be inspected before using GPU time for generation.",
+    )
 
     add_heading(doc, "3. Experimental Protocol")
     add_para(
@@ -300,6 +308,14 @@ def build_report() -> None:
         "embeddings using cosine similarity. A trial is successful when cosine(generated, hidden) is greater "
         "than cosine(generated, known). The margin is the difference between these two similarities. A larger "
         "positive margin indicates a clearer movement toward the hidden identity in embedding space.",
+    )
+    add_para(
+        doc,
+        "The success metric is intentionally relative. It does not require the generated image to perfectly match "
+        "the hidden identity; it asks whether the image is closer to the hidden contributor than to the known "
+        "contributor. This is suitable for this project because the objective is identity disentanglement from a "
+        "morph, not exact image reconstruction. The margin complements the success rate by showing how confident "
+        "this relative movement is on average.",
     )
 
     add_heading(doc, "4. Quantitative Results")
@@ -318,6 +334,13 @@ def build_report() -> None:
         "MIPGAN-I is the easiest subset in this evaluation, while OpenCV is the hardest. This variation supports "
         "the decision to keep results separated by morphing method. Different morphing algorithms appear to "
         "leave different amounts or forms of recoverable identity information in the generated morph image.",
+    )
+    add_para(
+        doc,
+        "Another useful observation is that AdaptDiff does not improve only one isolated subset. Its advantage is "
+        "consistent across classical morphs and GAN-based morphs. This consistency makes the result more reliable "
+        "than a single high score on one subset, because it suggests that adaptive guidance is useful under several "
+        "different morph generation procedures.",
     )
 
     add_heading(doc, "5. Qualitative Results")
@@ -346,6 +369,14 @@ def build_report() -> None:
         "photo-quality reconstructions. A more accurate interpretation is that the generated samples contain "
         "identity cues that ElasticFaceArc places closer to the hidden contributor than to the known contributor.",
     )
+    add_para(
+        doc,
+        "This gap between visual quality and embedding behavior is important in face analysis. Human observers "
+        "mainly judge sharpness, lighting, expression, and realism, while the evaluation model compares numerical "
+        "identity features. A blurry output can therefore still be useful for the metric if it contains enough "
+        "identity-related structure. For this reason, the qualitative and quantitative results should be read "
+        "together rather than treated as interchangeable evidence.",
+    )
 
     add_heading(doc, "6. Discussion")
     add_para(
@@ -363,6 +394,14 @@ def build_report() -> None:
         "face-recognition model would be useful as a future check. Third, the generated images do not yet have "
         "strong visual fidelity. These limitations mean the project should be framed as evidence of hidden-identity "
         "recovery in embedding space, not as a final visual reconstruction system.",
+    )
+    add_para(
+        doc,
+        "A natural next step would be to repeat the evaluation with an additional face-recognition model that was "
+        "not used for conditioning. This would test whether the recovered identity signal transfers beyond "
+        "ElasticFaceArc. Another extension would be to study different noise timesteps, guidance weights, and "
+        "sampling schedules more systematically. In the current project, the settings were kept close to the "
+        "supervisor's instructions so that the comparison between NegFaceDiff and AdaptDiff remained controlled.",
     )
 
     add_heading(doc, "7. Conclusion")

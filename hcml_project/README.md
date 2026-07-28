@@ -689,6 +689,41 @@ NegFaceDiff
 AdaptDiff
 ```
 
+### 11. Run Equal-Size Subsets For Each MAD22 Morphing Method
+
+The supervisor requested that morphing methods are evaluated independently. Use
+the helper below to run the same number of morphs per method, with separate
+outputs and metrics for each method:
+
+```bash
+python hcml_project/scripts/run_mad22_method_pipeline.py \
+  --method OpenCV \
+  --num-morphs 10 \
+  --stage all \
+  --device cuda \
+  --embedding-device cpu
+```
+
+Repeat by changing `--method`:
+
+```text
+OpenCV
+FaceMorpher
+MIPGAN_I
+MIPGAN_II
+Webmorph
+```
+
+Each method writes separate files, for example:
+
+```text
+hcml_project/outputs/generated_mad22_opencv_subset_elasticface_arc/
+hcml_project/metadata/mad22_opencv_subset_generated_recovery_eval.csv
+```
+
+Important: do not merge the CSVs into one overall metric. In the report, use one
+row per morphing method and keep qualitative examples method-specific.
+
 ## Next planned steps
 
 1. Run generated-image recovery evaluation on Kaggle.

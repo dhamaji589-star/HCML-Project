@@ -760,6 +760,48 @@ For each query:
   rank all gallery embeddings by cosine similarity
   find rank of hidden identity B
 
+Step 18: Repeat the experiment per MAD22 morphing method
+
+Supervisor instruction:
+
+  Each morphing subset should be evaluated independently. Do not merge OpenCV,
+  MIPGAN_I, MIPGAN_II, FaceMorpher, and Webmorph into a single aggregated
+  metric.
+
+Practical command for one method:
+
+  python hcml_project/scripts/run_mad22_method_pipeline.py ^
+    --method OpenCV ^
+    --num-morphs 10 ^
+    --stage all ^
+    --device cuda ^
+    --embedding-device cpu
+
+Repeat with:
+
+  OpenCV
+  FaceMorpher
+  MIPGAN_I
+  MIPGAN_II
+  Webmorph
+
+What the helper does:
+
+  1. Build trial metadata for the selected method.
+  2. Select the same number of morphs for a fair subset comparison.
+  3. Build image manifest.
+  4. Align images for ElasticFaceArc embeddings.
+  5. Extract ElasticFaceArc identity contexts.
+  6. Prepare positive, negative, and hidden context arrays.
+  7. Generate with NegFaceDiff and AdaptDiff settings.
+  8. Evaluate generated images with ElasticFaceArc cosine similarity.
+
+Report rule:
+
+  Use one table row per morphing method. Do not compute one combined result
+  across all methods, because different morphing methods are different attack
+  distributions.
+
 Report:
 
   Top-1

@@ -20,16 +20,6 @@ SUCCESS_FIGURE = Path("results/success_rate_by_method_horizontal.png")
 QUALITATIVE_FIGURE = Path("results/qualitative_best_examples.png")
 
 
-def set_columns(section, count: int, space_twips: int = 420) -> None:
-    sect_pr = section._sectPr
-    cols = sect_pr.xpath("./w:cols")
-    cols = cols[0] if cols else OxmlElement("w:cols")
-    cols.set(qn("w:num"), str(count))
-    cols.set(qn("w:space"), str(space_twips))
-    if not sect_pr.xpath("./w:cols"):
-        sect_pr.append(cols)
-
-
 def set_cell_shading(cell, fill: str) -> None:
     tc_pr = cell._tc.get_or_add_tcPr()
     shading = OxmlElement("w:shd")
@@ -241,9 +231,6 @@ def build_report() -> None:
 
     add_title_and_abstract(doc)
 
-    body_section = doc.add_section(WD_SECTION.CONTINUOUS)
-    set_columns(body_section, 2)
-
     add_heading(doc, "1. Introduction")
     add_para(
         doc,
@@ -319,7 +306,9 @@ def build_report() -> None:
     )
 
     add_heading(doc, "4. Quantitative Results")
-    doc.add_picture(str(SUCCESS_FIGURE), width=Inches(3.05))
+    figure_para = doc.add_paragraph()
+    figure_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    figure_para.add_run().add_picture(str(SUCCESS_FIGURE), width=Inches(5.85))
     add_caption(doc, "Figure 1. Hidden-identity recovery success rate for each morphing method.")
     add_results_table(doc)
     add_para(
@@ -350,18 +339,14 @@ def build_report() -> None:
         "They are useful because they show the complete recovery setup: known identity, input morph, hidden "
         "identity, and both generated outputs.",
     )
-
-    figure_section = doc.add_section(WD_SECTION.CONTINUOUS)
-    set_columns(figure_section, 1)
-    doc.add_picture(str(QUALITATIVE_FIGURE), width=Inches(6.25))
+    figure_para = doc.add_paragraph()
+    figure_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    figure_para.add_run().add_picture(str(QUALITATIVE_FIGURE), width=Inches(6.15))
     add_caption(
         doc,
         "Figure 2. Qualitative examples selected by positive AdaptDiff margin. The generated faces show an "
         "identity signal but remain visually blurry.",
     )
-
-    body_section_2 = doc.add_section(WD_SECTION.CONTINUOUS)
-    set_columns(body_section_2, 2)
     add_para(
         doc,
         "The visual limitation is clear. The generated samples are often blurry, color-shifted, and less realistic "
@@ -417,7 +402,6 @@ def build_report() -> None:
     )
 
     refs_section = doc.add_section(WD_SECTION.NEW_PAGE)
-    set_columns(refs_section, 1)
     add_references(doc)
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)

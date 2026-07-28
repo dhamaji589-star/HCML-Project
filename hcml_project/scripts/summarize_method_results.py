@@ -12,22 +12,27 @@ METHOD_FILES = {
     "OpenCV": [
         "results/extracted/opencv/hcml_project/metadata/mad22_opencv_smoke_generated_recovery_eval_original_schedule_20.csv",
         "results/extracted_subset2/opencv/hcml_project/metadata/mad22_opencv_subset2_generated_recovery_eval.csv",
+        "results/extracted_subset3/opencv/hcml_project/metadata/mad22_opencv_subset3_generated_recovery_eval.csv",
     ],
     "FaceMorpher": [
         "results/extracted/facemorpher/hcml_project/metadata/mad22_facemorpher_subset_generated_recovery_eval.csv",
         "results/extracted_subset2/facemorpher/hcml_project/metadata/mad22_facemorpher_subset2_generated_recovery_eval.csv",
+        "results/extracted_subset3/facemorpher/hcml_project/metadata/mad22_facemorpher_subset3_generated_recovery_eval.csv",
     ],
     "MIPGAN-I": [
         "results/extracted/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset_generated_recovery_eval.csv",
         "results/extracted_subset2/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset2_generated_recovery_eval.csv",
+        "results/extracted_subset3/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset3_generated_recovery_eval.csv",
     ],
     "MIPGAN-II": [
         "results/extracted/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset_generated_recovery_eval.csv",
         "results/extracted_subset2/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset2_generated_recovery_eval.csv",
+        "results/extracted_subset3/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset3_generated_recovery_eval.csv",
     ],
     "WebMorph": [
         "results/extracted/webmorph/hcml_project/metadata/mad22_webmorph_subset_generated_recovery_eval.csv",
         "results/extracted_subset2/webmorph/hcml_project/metadata/mad22_webmorph_subset2_generated_recovery_eval.csv",
+        "results/extracted_subset3/webmorph/hcml_project/metadata/mad22_webmorph_subset3_generated_recovery_eval.csv",
     ],
 }
 
@@ -138,7 +143,7 @@ def write_markdown(rows: list[dict[str, str]], path: Path) -> None:
     lines.extend(
         [
             "",
-            "Each method uses 20 morph images, evaluated as 40 directed recovery trials.",
+            "Each method uses 30 morph images, evaluated as 60 directed recovery trials.",
             "The margin is cosine(generated, hidden identity) minus cosine(generated, known identity).",
         ]
     )

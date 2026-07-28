@@ -9,11 +9,26 @@ from pathlib import Path
 
 
 METHOD_FILES = {
-    "OpenCV": "results/extracted/opencv/hcml_project/metadata/mad22_opencv_smoke_generated_recovery_eval_original_schedule_20.csv",
-    "FaceMorpher": "results/extracted/facemorpher/hcml_project/metadata/mad22_facemorpher_subset_generated_recovery_eval.csv",
-    "MIPGAN-I": "results/extracted/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset_generated_recovery_eval.csv",
-    "MIPGAN-II": "results/extracted/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset_generated_recovery_eval.csv",
-    "WebMorph": "results/extracted/webmorph/hcml_project/metadata/mad22_webmorph_subset_generated_recovery_eval.csv",
+    "OpenCV": [
+        "results/extracted/opencv/hcml_project/metadata/mad22_opencv_smoke_generated_recovery_eval_original_schedule_20.csv",
+        "results/extracted_subset2/opencv/hcml_project/metadata/mad22_opencv_subset2_generated_recovery_eval.csv",
+    ],
+    "FaceMorpher": [
+        "results/extracted/facemorpher/hcml_project/metadata/mad22_facemorpher_subset_generated_recovery_eval.csv",
+        "results/extracted_subset2/facemorpher/hcml_project/metadata/mad22_facemorpher_subset2_generated_recovery_eval.csv",
+    ],
+    "MIPGAN-I": [
+        "results/extracted/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset_generated_recovery_eval.csv",
+        "results/extracted_subset2/mipgan_i/hcml_project/metadata/mad22_mipgan_i_subset2_generated_recovery_eval.csv",
+    ],
+    "MIPGAN-II": [
+        "results/extracted/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset_generated_recovery_eval.csv",
+        "results/extracted_subset2/mipgan_ii/hcml_project/metadata/mad22_mipgan_ii_subset2_generated_recovery_eval.csv",
+    ],
+    "WebMorph": [
+        "results/extracted/webmorph/hcml_project/metadata/mad22_webmorph_subset_generated_recovery_eval.csv",
+        "results/extracted_subset2/webmorph/hcml_project/metadata/mad22_webmorph_subset2_generated_recovery_eval.csv",
+    ],
 }
 
 
@@ -41,8 +56,10 @@ def read_rows(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(csv_file))
 
 
-def summarize_method(method: str, path: Path) -> list[dict[str, str]]:
-    rows = read_rows(path)
+def summarize_method(method: str, paths: list[Path]) -> list[dict[str, str]]:
+    rows = []
+    for path in paths:
+        rows.extend(read_rows(path))
     grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in rows:
         grouped[row["setting"]].append(row)
@@ -121,7 +138,7 @@ def write_markdown(rows: list[dict[str, str]], path: Path) -> None:
     lines.extend(
         [
             "",
-            "Each method uses 10 morph images, evaluated as 20 directed recovery trials.",
+            "Each method uses 20 morph images, evaluated as 40 directed recovery trials.",
             "The margin is cosine(generated, hidden identity) minus cosine(generated, known identity).",
         ]
     )
@@ -131,8 +148,8 @@ def write_markdown(rows: list[dict[str, str]], path: Path) -> None:
 def main() -> None:
     args = parse_args()
     summaries = []
-    for method, path_text in METHOD_FILES.items():
-        summaries.extend(summarize_method(method, Path(path_text)))
+    for method, path_texts in METHOD_FILES.items():
+        summaries.extend(summarize_method(method, [Path(path_text) for path_text in path_texts]))
 
     pivoted = pivot_rows(summaries)
     write_csv(pivoted, args.output_csv)

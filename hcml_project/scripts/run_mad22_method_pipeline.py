@@ -34,6 +34,17 @@ def parse_args() -> argparse.Namespace:
         help="Number of unique morph images to evaluate. Each gives two directed trials.",
     )
     parser.add_argument(
+        "--start-index",
+        type=int,
+        default=0,
+        help="Start index for deterministic non-overlapping subsets.",
+    )
+    parser.add_argument(
+        "--output-tag",
+        default="",
+        help="Optional output tag, e.g. subset2 or subset3.",
+    )
+    parser.add_argument(
         "--stage",
         choices=["prepare", "generate", "evaluate", "all"],
         default="all",
@@ -89,7 +100,19 @@ def parse_args() -> argparse.Namespace:
         "--weights-path",
         type=Path,
         default=Path("hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth"),
-        help="ElasticFaceArc weights path.",
+        help="ElasticFaceArc weights path used for identity conditioning.",
+    )
+    parser.add_argument(
+        "--evaluation-weights-path",
+        type=Path,
+        default=Path("hcml_project/model_assets/elasticface/ElasticFaceCos_295672backbone.pth"),
+        help="ElasticFaceCos weights path used for final FR evaluation.",
+    )
+    parser.add_argument(
+        "--positive-pair-threshold",
+        type=float,
+        default=0.321,
+        help="Cosine threshold used for generated/hidden positive-pair recovery.",
     )
     parser.add_argument(
         "--dry-run",
@@ -115,9 +138,9 @@ def run(command: list[str], dry_run: bool) -> None:
     subprocess.run(command, check=True)
 
 
-def paths_for(method: str) -> dict[str, Path]:
+def paths_for(method: str, output_tag: str) -> dict[str, Path]:
     slug = method_slug(method)
-    prefix = f"mad22_{slug}_subset"
+    prefix = f"mad22_{slug}_{output_tag}" if output_tag else f"mad22_{slug}_subset"
     return {
         "trials": Path(f"hcml_project/metadata/mad22_{slug}_trials.csv"),
         "skipped": Path(f"hcml_project/metadata/mad22_{slug}_skipped.csv"),
@@ -154,6 +177,8 @@ def prepare_commands(args: argparse.Namespace, paths: dict[str, Path]) -> list[l
             str(paths["subset_trials"]),
             "--num-morphs",
             str(args.num_morphs),
+            "--start-index",
+            str(args.start_index),
             "--selection",
             args.selection,
             "--seed",
@@ -250,7 +275,13 @@ def evaluate_command(args: argparse.Namespace, paths: dict[str, Path]) -> list[s
         "--manifest-csv",
         str(paths["sampling_inputs"] / "paired_contexts_manifest.csv"),
         "--weights-path",
-        str(args.weights_path),
+        str(args.evaluation_weights_path),
+        "--evaluation-model-name",
+        "elasticface_cos",
+        "--positive-pair-threshold",
+        str(args.positive_pair_threshold),
+        "--alignment-csv",
+        str(paths["aligned"]),
         "--architecture",
         "iresnet100",
         "--output-csv",
@@ -262,10 +293,13 @@ def evaluate_command(args: argparse.Namespace, paths: dict[str, Path]) -> list[s
 
 def main() -> None:
     args = parse_args()
-    paths = paths_for(args.method)
+    paths = paths_for(args.method, args.output_tag)
 
     print(f"Method: {args.method}")
     print(f"Subset morphs: {args.num_morphs}")
+    print(f"Start index: {args.start_index}")
+    if args.output_tag:
+        print(f"Output tag: {args.output_tag}")
     print(f"Output root: {paths['outputs']}")
 
     if args.stage in {"prepare", "all"}:

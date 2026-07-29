@@ -43,8 +43,8 @@ def main() -> None:
     rows = read_rows(args.summary_csv)
 
     methods = [row["method"] for row in rows]
-    neg_rates = [parse_success(row["negfacediff_success"]) for row in rows]
-    adapt_rates = [parse_success(row["adaptdiff_success"]) for row in rows]
+    neg_rates = [parse_success(row["negfacediff_threshold_recovery"]) for row in rows]
+    adapt_rates = [parse_success(row["adaptdiff_threshold_recovery"]) for row in rows]
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -67,7 +67,12 @@ def main() -> None:
         small_font = ImageFont.load_default()
         tiny_font = ImageFont.load_default()
 
-    draw.text((margin_left, 25), "Hidden-identity recovery success rate", fill="black", font=font)
+    draw.text(
+        (margin_left, 25),
+        "Threshold-based hidden-identity recovery rate",
+        fill="black",
+        font=font,
+    )
     draw.rectangle(
         (width - 330, 30, width - 305, 55),
         fill="#4c78a8",
@@ -85,7 +90,7 @@ def main() -> None:
         y = base_y - tick * scale
         draw.line((margin_left, y, width - margin_right, y), fill="#dddddd", width=1)
         draw.text((35, y - 12), f"{tick}", fill="black", font=small_font)
-    draw.text((20, margin_top - 35), "Success (%)", fill="black", font=small_font)
+    draw.text((20, margin_top - 35), "Positive pairs (%)", fill="black", font=small_font)
     draw.line((margin_left, margin_top, margin_left, base_y), fill="black", width=2)
     draw.line((margin_left, base_y, width - margin_right, base_y), fill="black", width=2)
 

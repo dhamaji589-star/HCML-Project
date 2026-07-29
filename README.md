@@ -35,6 +35,8 @@ pipeline:
 3. FFHQ latent autoencoder weights from the Latent Diffusion release, converted
    with `hcml_project/scripts/convert_ffhq_autoencoder.py`.
 4. ElasticFaceArc pretrained weights from the ElasticFace repository.
+5. ElasticFaceCos pretrained weights from the ElasticFace repository for final
+   threshold-based face-recognition evaluation.
 
 Expected local paths are documented in `hcml_project/README.md`. They are also
 checked by:
@@ -48,11 +50,11 @@ python hcml_project/scripts/check_required_assets.py --strict
 1. Build directed MAD22 recovery trials.
 2. Build a unique image manifest.
 3. Align/crop all required faces.
-4. Extract ElasticFaceArc identity embeddings.
+4. Extract ElasticFaceArc identity embeddings for generation contexts.
 5. Prepare positive, negative, and hidden identity contexts.
 6. Generate images with NegFaceDiff and AdaptDiff settings.
-7. Evaluate whether generated samples are closer to the hidden identity than to
-   the known identity in embedding space.
+7. Evaluate generated images with ElasticFaceCos using directional and
+   threshold-based metrics.
 
 The two compared sampling settings are:
 
@@ -63,6 +65,18 @@ AdaptDiff:   adapt=true,  weight=1.0
 
 Each MAD22 morphing method is evaluated independently, as required for the
 project report.
+
+The final metric follows the supervisor feedback: a generated/hidden pair is
+counted as recovered only when the ElasticFaceCos cosine similarity is above
+the threshold used for positive pairs:
+
+```text
+cosine(generated, hidden identity) >= 0.321
+```
+
+The older directional metric,
+`cosine(generated, hidden) > cosine(generated, known)`, is still reported as
+supporting evidence that sampling moved away from the known identity.
 
 ## Running on Kaggle
 

@@ -50,7 +50,12 @@ REQUIRED_ASSETS = [
     RequiredAsset(
         label="ElasticFaceArc weights",
         path=Path("hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth"),
-        purpose="Final identity context model requested by the supervisor.",
+        purpose="Identity context model used for NegFaceDiff/AdaptDiff conditioning.",
+    ),
+    RequiredAsset(
+        label="ElasticFaceCos weights",
+        path=Path("hcml_project/model_assets/elasticface/ElasticFaceCos_295672backbone.pth"),
+        purpose="Independent final FR model used for threshold-based recovery evaluation.",
     ),
 ]
 

@@ -4,9 +4,12 @@ For every generated image, this script computes:
 
 - similarity to the hidden identity
 - similarity to the known identity
-- margin = hidden similarity - known similarity
+- directional margin = hidden similarity - known similarity
+- threshold-based hidden-identity recovery
 
-Positive margin means the generated image is closer to the hidden identity.
+The directional metric shows whether generation moved away from the known
+identity and toward the hidden identity. The threshold metric is stricter:
+cosine(generated, hidden) must be above a face-recognition threshold.
 """
 
 from __future__ import annotations
@@ -58,9 +61,32 @@ def parse_args() -> argparse.Namespace:
         "--weights-path",
         type=Path,
         default=Path(
-            "hcml_project/model_assets/elasticface/ElasticFaceArc_295672backbone.pth"
+            "hcml_project/model_assets/elasticface/ElasticFaceCos_295672backbone.pth"
         ),
-        help="Face-recognition model weights for generated-image evaluation.",
+        help="Face-recognition model weights for final generated-image evaluation.",
+    )
+    parser.add_argument(
+        "--evaluation-model-name",
+        default="elasticface_cos",
+        help="Short name written to logs/CSV for the final evaluation model.",
+    )
+    parser.add_argument(
+        "--positive-pair-threshold",
+        type=float,
+        default=0.321,
+        help=(
+            "Cosine threshold for generated/hidden positive pairs. "
+            "0.321 is the ElasticFaceCos mean-std genuine threshold reported for CASIA-WebFace."
+        ),
+    )
+    parser.add_argument(
+        "--alignment-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Optional alignment report. When provided, known/hidden/morph images "
+            "are evaluated from their aligned crops instead of raw image paths."
+        ),
     )
     parser.add_argument(
         "--architecture",
@@ -108,6 +134,21 @@ def load_contexts(path: Path) -> dict[str, np.ndarray]:
         raise FileNotFoundError(f"Contexts NPZ not found: {path}")
     data = np.load(path)
     return {key: data[key].astype(np.float32) for key in data.files}
+
+
+def normalize_path(path_text: str) -> str:
+    return path_text.replace("\\", "/")
+
+
+def build_aligned_path_lookup(alignment_csv: Path | None) -> dict[str, str]:
+    if alignment_csv is None:
+        return {}
+    rows = read_csv(alignment_csv)
+    lookup = {}
+    for row in rows:
+        if row.get("alignment_status") == "success":
+            lookup[normalize_path(row["image_path"])] = row["aligned_path"]
+    return lookup
 
 
 def import_backbone(architecture: str):
@@ -183,6 +224,36 @@ def embed_generated_images(
     return embeddings
 
 
+def embed_reference_images(
+    manifest_rows: list[dict[str, str]],
+    aligned_path_lookup: dict[str, str],
+    model: torch.nn.Module,
+    device: torch.device,
+    batch_size: int,
+) -> dict[str, np.ndarray]:
+    image_paths = []
+    for row in manifest_rows:
+        image_paths.extend([row["morph_path"], row["known_path"], row["hidden_path"]])
+
+    unique_paths = sorted({normalize_path(path) for path in image_paths})
+    embedding_rows = []
+    for image_path in unique_paths:
+        eval_path = aligned_path_lookup.get(image_path, image_path)
+        embedding_rows.append({"path_key": image_path, "output_path": eval_path})
+
+    embeddings: dict[str, np.ndarray] = {}
+    for start in range(0, len(embedding_rows), batch_size):
+        batch_rows = embedding_rows[start : start + batch_size]
+        batch = torch.stack(
+            [load_image_tensor(Path(row["output_path"])) for row in batch_rows]
+        ).to(device)
+        with torch.no_grad():
+            features = F.normalize(model(batch), dim=1)
+        for row, feature in zip(batch_rows, features.cpu().numpy()):
+            embeddings[row["path_key"]] = feature.astype(np.float32)
+    return embeddings
+
+
 def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))
 
@@ -194,8 +265,10 @@ def build_manifest_lookup(rows: list[dict[str, str]]) -> dict[str, dict[str, str
 def evaluate(
     sampling_rows: list[dict[str, str]],
     manifest_lookup: dict[str, dict[str, str]],
-    contexts: dict[str, np.ndarray],
     generated_embeddings: dict[str, np.ndarray],
+    reference_embeddings: dict[str, np.ndarray],
+    positive_pair_threshold: float,
+    evaluation_model_name: str,
 ) -> list[dict[str, str]]:
     results = []
     for row in sampling_rows:
@@ -208,12 +281,16 @@ def evaluate(
         context_id = int(manifest_row["context_id"])
 
         generated = generated_embeddings[f"{setting}::{trial_id}"]
-        known = contexts["negative_contexts"][context_id]
-        hidden = contexts["hidden_contexts"][context_id]
+        known = reference_embeddings[normalize_path(manifest_row["known_path"])]
+        hidden = reference_embeddings[normalize_path(manifest_row["hidden_path"])]
+        morph = reference_embeddings[normalize_path(manifest_row["morph_path"])]
 
         sim_known = cosine(generated, known)
         sim_hidden = cosine(generated, hidden)
-        margin = sim_hidden - sim_known
+        sim_morph_hidden = cosine(morph, hidden)
+        directional_margin = sim_hidden - sim_known
+        generated_minus_morph_hidden = sim_hidden - sim_morph_hidden
+        positive_pair = sim_hidden >= positive_pair_threshold
 
         results.append(
             {
@@ -222,10 +299,15 @@ def evaluate(
                 "known_id": manifest_row["known_id"],
                 "hidden_id": manifest_row["hidden_id"],
                 "generated_path": row["output_path"],
+                "evaluation_model_name": evaluation_model_name,
+                "positive_pair_threshold": f"{positive_pair_threshold:.6f}",
                 "sim_generated_known": f"{sim_known:.6f}",
                 "sim_generated_hidden": f"{sim_hidden:.6f}",
-                "margin_hidden_minus_known": f"{margin:.6f}",
+                "sim_morph_hidden": f"{sim_morph_hidden:.6f}",
+                "margin_hidden_minus_known": f"{directional_margin:.6f}",
+                "margin_generated_minus_morph_hidden": f"{generated_minus_morph_hidden:.6f}",
                 "closer_to_hidden": str(sim_hidden > sim_known),
+                "hidden_positive_pair": str(positive_pair),
             }
         )
     return results
@@ -239,10 +321,15 @@ def write_results(rows: list[dict[str, str]], output_csv: Path) -> None:
         "known_id",
         "hidden_id",
         "generated_path",
+        "evaluation_model_name",
+        "positive_pair_threshold",
         "sim_generated_known",
         "sim_generated_hidden",
+        "sim_morph_hidden",
         "margin_hidden_minus_known",
+        "margin_generated_minus_morph_hidden",
         "closer_to_hidden",
+        "hidden_positive_pair",
     ]
     with output_csv.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
@@ -258,13 +345,29 @@ def print_summary(rows: list[dict[str, str]], output_csv: Path) -> None:
     print(f"Generated images evaluated: {len(rows)}")
     for setting, setting_rows in sorted(by_setting.items()):
         total = len(setting_rows)
-        successes = sum(row["closer_to_hidden"] == "True" for row in setting_rows)
+        directional_recoveries = sum(
+            row["closer_to_hidden"] == "True" for row in setting_rows
+        )
+        threshold_recoveries = sum(
+            row["hidden_positive_pair"] == "True" for row in setting_rows
+        )
+        hidden_sims = [float(row["sim_generated_hidden"]) for row in setting_rows]
         margins = [float(row["margin_hidden_minus_known"]) for row in setting_rows]
+        morph_margins = [
+            float(row["margin_generated_minus_morph_hidden"]) for row in setting_rows
+        ]
+        mean_hidden_sim = sum(hidden_sims) / len(hidden_sims) if hidden_sims else 0.0
         mean_margin = sum(margins) / len(margins) if margins else 0.0
+        mean_morph_margin = (
+            sum(morph_margins) / len(morph_margins) if morph_margins else 0.0
+        )
         print()
         print(f"{setting}")
-        print(f"  Successes: {successes}/{total}")
-        print(f"  Mean margin hidden-known: {mean_margin:.6f}")
+        print(f"  Directional recoveries: {directional_recoveries}/{total}")
+        print(f"  Threshold recoveries: {threshold_recoveries}/{total}")
+        print(f"  Mean cos(generated, hidden): {mean_hidden_sim:.6f}")
+        print(f"  Mean directional margin hidden-known: {mean_margin:.6f}")
+        print(f"  Mean generated-hidden minus morph-hidden: {mean_morph_margin:.6f}")
     print()
     print(f"Output CSV: {output_csv}")
 
@@ -281,17 +384,33 @@ def main() -> None:
 
     manifest_rows = read_csv(args.manifest_csv)
     manifest_lookup = build_manifest_lookup(manifest_rows)
-    contexts = load_contexts(args.contexts_npz)
+    if args.contexts_npz.is_file():
+        load_contexts(args.contexts_npz)
 
     model = load_model(args.architecture, args.weights_path, device)
     generated_embeddings = embed_generated_images(
         sampling_rows, model, device, args.batch_size
     )
+    aligned_path_lookup = build_aligned_path_lookup(args.alignment_csv)
+    reference_embeddings = embed_reference_images(
+        manifest_rows, aligned_path_lookup, model, device, args.batch_size
+    )
 
-    results = evaluate(sampling_rows, manifest_lookup, contexts, generated_embeddings)
+    results = evaluate(
+        sampling_rows,
+        manifest_lookup,
+        generated_embeddings,
+        reference_embeddings,
+        args.positive_pair_threshold,
+        args.evaluation_model_name,
+    )
     write_results(results, args.output_csv)
     print(f"Device: {device}")
     print(f"Architecture: {args.architecture}")
+    print(f"Evaluation model: {args.evaluation_model_name}")
+    print(f"Positive-pair threshold: {args.positive_pair_threshold:.6f}")
+    if args.alignment_csv is not None:
+        print(f"Reference alignment CSV: {args.alignment_csv}")
     print_summary(results, args.output_csv)
 
 

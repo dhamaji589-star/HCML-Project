@@ -161,11 +161,22 @@ def select_best(method: str) -> tuple[Path, dict[str, str], dict[str, dict[str, 
             neg = by_setting.get("negfacediff")
             if not adapt or not neg or trial_id not in trials:
                 continue
-            if adapt["closer_to_hidden"].strip().lower() != "true":
+            is_threshold_recovery = (
+                adapt.get("hidden_positive_pair", "false").strip().lower() == "true"
+            )
+            is_directional_recovery = (
+                adapt.get("closer_to_hidden", "false").strip().lower() == "true"
+            )
+            if not is_threshold_recovery and not is_directional_recovery:
                 continue
-            candidates.append((float(adapt["margin_hidden_minus_known"]), root, trials[trial_id], by_setting))
+            score = float(
+                adapt.get("sim_generated_hidden")
+                or adapt.get("margin_hidden_minus_known")
+                or 0.0
+            )
+            candidates.append((score, root, trials[trial_id], by_setting))
     if not candidates:
-        raise RuntimeError(f"No successful AdaptDiff examples found for {method}")
+        raise RuntimeError(f"No AdaptDiff recovery examples found for {method}")
     _margin, root, trial, by_setting = max(candidates, key=lambda item: item[0])
     return root, trial, by_setting
 
@@ -199,11 +210,15 @@ def main() -> None:
             (Path(trial["hidden_path"]), "Hidden"),
             (
                 Path(by_setting["negfacediff"]["generated_path"]),
-                "NegFaceDiff\nm={:.3f}".format(float(by_setting["negfacediff"]["margin_hidden_minus_known"])),
+                "NegFaceDiff\ncos={:.3f}".format(
+                    float(by_setting["negfacediff"].get("sim_generated_hidden", 0.0))
+                ),
             ),
             (
                 Path(by_setting["adaptdiff"]["generated_path"]),
-                "AdaptDiff\nm={:.3f}".format(float(by_setting["adaptdiff"]["margin_hidden_minus_known"])),
+                "AdaptDiff\ncos={:.3f}".format(
+                    float(by_setting["adaptdiff"].get("sim_generated_hidden", 0.0))
+                ),
             ),
         ]
         y = padding + row_index * (tile_size + label_height + padding)

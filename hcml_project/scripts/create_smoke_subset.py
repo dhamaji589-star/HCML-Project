@@ -32,6 +32,12 @@ def parse_args() -> argparse.Namespace:
         help="Number of unique morph images to include. Each morph contributes two rows.",
     )
     parser.add_argument(
+        "--start-index",
+        type=int,
+        default=0,
+        help="Start index for deterministic first-mode subset selection.",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=7,
@@ -68,17 +74,26 @@ def group_by_morph(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]
     return dict(grouped)
 
 
-def select_morphs(grouped: dict[str, list[dict[str, str]]], num_morphs: int, selection: str, seed: int) -> list[str]:
+def select_morphs(
+    grouped: dict[str, list[dict[str, str]]],
+    num_morphs: int,
+    selection: str,
+    seed: int,
+    start_index: int,
+) -> list[str]:
     morph_paths = sorted(grouped)
     if num_morphs <= 0:
         raise ValueError("--num-morphs must be greater than zero")
-    if num_morphs > len(morph_paths):
+    if start_index < 0:
+        raise ValueError("--start-index must be zero or greater")
+    if start_index + num_morphs > len(morph_paths):
         raise ValueError(
-            f"Requested {num_morphs} morphs, but only {len(morph_paths)} are available."
+            f"Requested {num_morphs} morphs from start index {start_index}, "
+            f"but only {len(morph_paths)} are available."
         )
 
     if selection == "first":
-        return morph_paths[:num_morphs]
+        return morph_paths[start_index : start_index + num_morphs]
 
     rng = random.Random(seed)
     return sorted(rng.sample(morph_paths, num_morphs))
@@ -101,6 +116,7 @@ def main() -> None:
         num_morphs=args.num_morphs,
         selection=args.selection,
         seed=args.seed,
+        start_index=args.start_index,
     )
 
     subset_rows: list[dict[str, str]] = []

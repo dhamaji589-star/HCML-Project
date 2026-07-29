@@ -6,10 +6,10 @@ implementation and provide a reproducible pipeline for:
 
 1. Building directed recovery trials from MAD22 filenames.
 2. Aligning images.
-3. Extracting ElasticFaceArc identity embeddings.
+3. Extracting ElasticFaceArc identity embeddings for conditioning.
 4. Preparing paired diffusion contexts.
 5. Sampling with NegFaceDiff and AdaptDiff settings.
-6. Evaluating hidden-identity recovery in embedding space.
+6. Evaluating hidden-identity recovery with ElasticFaceCos.
 
 ## Required Assets
 
@@ -37,6 +37,7 @@ NegFaceDiff/models/autoencoder/
 
 hcml_project/model_assets/elasticface/
   ElasticFaceArc_295672backbone.pth
+  ElasticFaceCos_295672backbone.pth
 ```
 
 Check the expected files before running expensive jobs:
@@ -103,6 +104,23 @@ NegFaceDiff: adapt=false, weight=0.5
 AdaptDiff:   adapt=true,  weight=1.0
 DDIM steps:  200
 ```
+
+The final face-recognition evaluation uses ElasticFaceCos with threshold
+`0.321`. This threshold is used to decide whether the generated image and hidden
+identity image form a positive pair:
+
+```text
+cosine(generated, hidden identity) >= 0.321
+```
+
+The directional metric is still reported as supporting evidence:
+
+```text
+cosine(generated, hidden identity) > cosine(generated, known identity)
+```
+
+In short: the threshold metric is the stricter recovery metric, while the
+directional metric only shows movement away from the known contributor.
 
 ## Manual Pipeline
 
@@ -191,23 +209,34 @@ process, sampled back using DDIM, and decoded into generated face images.
 
 ```bash
 python hcml_project/scripts/evaluate_generated_recovery.py \
+  --weights-path hcml_project/model_assets/elasticface/ElasticFaceCos_295672backbone.pth \
+  --evaluation-model-name elasticface_cos \
+  --positive-pair-threshold 0.321 \
   --device cuda
 ```
 
-The evaluator embeds each generated image and compares:
+The evaluator embeds generated, hidden, known, and morph images with
+ElasticFaceCos. It reports:
 
 ```text
 cosine(generated, hidden identity)
 cosine(generated, known identity)
+cosine(morph, hidden identity)
 ```
 
-A trial is counted as successful when:
+The main threshold-recovery metric is:
+
+```text
+cosine(generated, hidden) >= 0.321
+```
+
+The supporting directional metric is:
 
 ```text
 cosine(generated, hidden) > cosine(generated, known)
 ```
 
-The reported margin is:
+The reported directional margin is:
 
 ```text
 cosine(generated, hidden) - cosine(generated, known)

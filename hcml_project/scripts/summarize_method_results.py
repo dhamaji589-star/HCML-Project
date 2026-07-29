@@ -78,20 +78,46 @@ def summarize_method(method: str, paths: list[Path]) -> list[dict[str, str]]:
     for setting in ["negfacediff", "adaptdiff"]:
         setting_rows = grouped[setting]
         total = len(setting_rows)
-        successes = sum(
+        directional_recoveries = sum(
             row["closer_to_hidden"].strip().lower() == "true"
             for row in setting_rows
         )
+        threshold_recoveries = sum(
+            row.get("hidden_positive_pair", "false").strip().lower() == "true"
+            for row in setting_rows
+        )
+        hidden_sims = [
+            float(row["sim_generated_hidden"])
+            for row in setting_rows
+            if row.get("sim_generated_hidden", "")
+        ]
         margins = [float(row["margin_hidden_minus_known"]) for row in setting_rows]
+        morph_margins = [
+            float(row["margin_generated_minus_morph_hidden"])
+            for row in setting_rows
+            if row.get("margin_generated_minus_morph_hidden", "")
+        ]
+        mean_hidden_sim = sum(hidden_sims) / len(hidden_sims) if hidden_sims else 0.0
         mean_margin = sum(margins) / len(margins) if margins else 0.0
+        mean_morph_margin = (
+            sum(morph_margins) / len(morph_margins) if morph_margins else 0.0
+        )
         summaries.append(
             {
                 "method": method,
                 "setting": setting,
-                "successes": str(successes),
+                "threshold_recoveries": str(threshold_recoveries),
+                "directional_recoveries": str(directional_recoveries),
                 "trials": str(total),
-                "success_rate": f"{successes / total:.3f}" if total else "0.000",
-                "mean_margin_hidden_minus_known": f"{mean_margin:.6f}",
+                "threshold_recovery_rate": (
+                    f"{threshold_recoveries / total:.3f}" if total else "0.000"
+                ),
+                "directional_recovery_rate": (
+                    f"{directional_recoveries / total:.3f}" if total else "0.000"
+                ),
+                "mean_cos_generated_hidden": f"{mean_hidden_sim:.4f}",
+                "mean_margin_hidden_minus_known": f"{mean_margin:.4f}",
+                "mean_margin_generated_minus_morph_hidden": f"{mean_morph_margin:.4f}",
             }
         )
     return summaries
@@ -109,9 +135,21 @@ def pivot_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
         pivoted.append(
             {
                 "method": method,
-                "negfacediff_success": f"{neg['successes']}/{neg['trials']}",
+                "negfacediff_threshold_recovery": (
+                    f"{neg['threshold_recoveries']}/{neg['trials']}"
+                ),
+                "negfacediff_directional_recovery": (
+                    f"{neg['directional_recoveries']}/{neg['trials']}"
+                ),
+                "negfacediff_hidden_cos": neg["mean_cos_generated_hidden"],
                 "negfacediff_margin": neg["mean_margin_hidden_minus_known"],
-                "adaptdiff_success": f"{adapt['successes']}/{adapt['trials']}",
+                "adaptdiff_threshold_recovery": (
+                    f"{adapt['threshold_recoveries']}/{adapt['trials']}"
+                ),
+                "adaptdiff_directional_recovery": (
+                    f"{adapt['directional_recoveries']}/{adapt['trials']}"
+                ),
+                "adaptdiff_hidden_cos": adapt["mean_cos_generated_hidden"],
                 "adaptdiff_margin": adapt["mean_margin_hidden_minus_known"],
             }
         )
@@ -122,9 +160,13 @@ def write_csv(rows: list[dict[str, str]], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
         "method",
-        "negfacediff_success",
+        "negfacediff_threshold_recovery",
+        "negfacediff_directional_recovery",
+        "negfacediff_hidden_cos",
         "negfacediff_margin",
-        "adaptdiff_success",
+        "adaptdiff_threshold_recovery",
+        "adaptdiff_directional_recovery",
+        "adaptdiff_hidden_cos",
         "adaptdiff_margin",
     ]
     with path.open("w", newline="", encoding="utf-8") as csv_file:
@@ -137,19 +179,20 @@ def write_markdown(rows: list[dict[str, str]], path: Path) -> None:
     lines = [
         "# MAD22 Subset Results",
         "",
-        "| Method | NegFaceDiff Success | NegFaceDiff Margin | AdaptDiff Success | AdaptDiff Margin |",
-        "|---|---:|---:|---:|---:|",
+        "| Method | NegFaceDiff Threshold Recovery | NegFaceDiff Mean cos(G,H) | NegFaceDiff Directional Margin | AdaptDiff Threshold Recovery | AdaptDiff Mean cos(G,H) | AdaptDiff Directional Margin |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for row in rows:
         lines.append(
-            "| {method} | {negfacediff_success} | {negfacediff_margin} | "
-            "{adaptdiff_success} | {adaptdiff_margin} |".format(**row)
+            "| {method} | {negfacediff_threshold_recovery} | {negfacediff_hidden_cos} | "
+            "{negfacediff_margin} | {adaptdiff_threshold_recovery} | "
+            "{adaptdiff_hidden_cos} | {adaptdiff_margin} |".format(**row)
         )
     lines.extend(
         [
             "",
-            "Each method uses 40 morph images, evaluated as 80 directed recovery trials.",
-            "The margin is cosine(generated, hidden identity) minus cosine(generated, known identity).",
+            "Threshold recovery uses cosine(generated, hidden identity) >= 0.321 with ElasticFaceCos.",
+            "The directional margin is cosine(generated, hidden identity) minus cosine(generated, known identity).",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -169,9 +212,11 @@ def main() -> None:
     print(f"Summary Markdown: {args.output_md}")
     for row in pivoted:
         print(
-            f"{row['method']}: NegFaceDiff {row['negfacediff_success']} "
-            f"({row['negfacediff_margin']}), AdaptDiff {row['adaptdiff_success']} "
-            f"({row['adaptdiff_margin']})"
+            f"{row['method']}: NegFaceDiff threshold "
+            f"{row['negfacediff_threshold_recovery']} "
+            f"(cos={row['negfacediff_hidden_cos']}, margin={row['negfacediff_margin']}), "
+            f"AdaptDiff threshold {row['adaptdiff_threshold_recovery']} "
+            f"(cos={row['adaptdiff_hidden_cos']}, margin={row['adaptdiff_margin']})"
         )
 
 

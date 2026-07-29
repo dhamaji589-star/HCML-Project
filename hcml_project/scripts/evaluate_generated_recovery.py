@@ -58,6 +58,12 @@ def parse_args() -> argparse.Namespace:
         help="Paired context manifest from prepare_sampling_inputs.py.",
     )
     parser.add_argument(
+        "--trials-csv",
+        type=Path,
+        default=None,
+        help="Directed trials CSV. Used when paired_contexts_manifest.csv is not available.",
+    )
+    parser.add_argument(
         "--weights-path",
         type=Path,
         default=Path(
@@ -87,6 +93,18 @@ def parse_args() -> argparse.Namespace:
             "Optional alignment report. When provided, known/hidden/morph images "
             "are evaluated from their aligned crops instead of raw image paths."
         ),
+    )
+    parser.add_argument(
+        "--generated-path-prefix",
+        type=Path,
+        default=Path("."),
+        help="Prefix added to generated output paths from the sampling report.",
+    )
+    parser.add_argument(
+        "--reference-path-prefix",
+        type=Path,
+        default=Path("."),
+        help="Prefix added to morph/known/hidden paths from the manifest or trials CSV.",
     )
     parser.add_argument(
         "--architecture",
@@ -129,6 +147,36 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(csv_file))
 
 
+def read_manifest_or_trials(
+    manifest_csv: Path,
+    trials_csv: Path | None,
+) -> list[dict[str, str]]:
+    if trials_csv is None and manifest_csv.is_file():
+        return read_csv(manifest_csv)
+    if trials_csv is None:
+        raise FileNotFoundError(
+            f"Manifest CSV not found: {manifest_csv}. "
+            "Provide --trials-csv when evaluating downloaded result packages."
+        )
+    trial_rows = read_csv(trials_csv)
+    manifest_rows = []
+    for context_id, row in enumerate(trial_rows):
+        manifest_rows.append(
+            {
+                "context_id": str(context_id),
+                "trial_id": row["trial_id"],
+                "morph_method": row["morph_method"],
+                "direction": row["direction"],
+                "known_id": row["known_id"],
+                "hidden_id": row["hidden_id"],
+                "morph_path": row["morph_path"],
+                "known_path": row["known_path"],
+                "hidden_path": row["hidden_path"],
+            }
+        )
+    return manifest_rows
+
+
 def load_contexts(path: Path) -> dict[str, np.ndarray]:
     if not path.is_file():
         raise FileNotFoundError(f"Contexts NPZ not found: {path}")
@@ -140,14 +188,18 @@ def normalize_path(path_text: str) -> str:
     return path_text.replace("\\", "/")
 
 
-def build_aligned_path_lookup(alignment_csv: Path | None) -> dict[str, str]:
+def build_aligned_path_lookup(
+    alignment_csv: Path | None, reference_path_prefix: Path
+) -> dict[str, str]:
     if alignment_csv is None:
         return {}
     rows = read_csv(alignment_csv)
     lookup = {}
     for row in rows:
         if row.get("alignment_status") == "success":
-            lookup[normalize_path(row["image_path"])] = row["aligned_path"]
+            lookup[normalize_path(row["image_path"])] = str(
+                reference_path_prefix / row["aligned_path"]
+            )
     return lookup
 
 
@@ -209,12 +261,16 @@ def embed_generated_images(
     model: torch.nn.Module,
     device: torch.device,
     batch_size: int,
+    generated_path_prefix: Path,
 ) -> dict[str, np.ndarray]:
     embeddings: dict[str, np.ndarray] = {}
     for start in range(0, len(rows), batch_size):
         batch_rows = rows[start : start + batch_size]
         batch = torch.stack(
-            [load_image_tensor(Path(row["output_path"])) for row in batch_rows]
+            [
+                load_image_tensor(generated_path_prefix / row["output_path"])
+                for row in batch_rows
+            ]
         ).to(device)
         with torch.no_grad():
             features = F.normalize(model(batch), dim=1)
@@ -230,6 +286,7 @@ def embed_reference_images(
     model: torch.nn.Module,
     device: torch.device,
     batch_size: int,
+    reference_path_prefix: Path,
 ) -> dict[str, np.ndarray]:
     image_paths = []
     for row in manifest_rows:
@@ -238,7 +295,7 @@ def embed_reference_images(
     unique_paths = sorted({normalize_path(path) for path in image_paths})
     embedding_rows = []
     for image_path in unique_paths:
-        eval_path = aligned_path_lookup.get(image_path, image_path)
+        eval_path = aligned_path_lookup.get(image_path, str(reference_path_prefix / image_path))
         embedding_rows.append({"path_key": image_path, "output_path": eval_path})
 
     embeddings: dict[str, np.ndarray] = {}
@@ -382,18 +439,25 @@ def main() -> None:
     if not sampling_rows:
         raise RuntimeError("No generated rows found in sampling report.")
 
-    manifest_rows = read_csv(args.manifest_csv)
+    manifest_rows = read_manifest_or_trials(args.manifest_csv, args.trials_csv)
     manifest_lookup = build_manifest_lookup(manifest_rows)
     if args.contexts_npz.is_file():
         load_contexts(args.contexts_npz)
 
     model = load_model(args.architecture, args.weights_path, device)
     generated_embeddings = embed_generated_images(
-        sampling_rows, model, device, args.batch_size
+        sampling_rows, model, device, args.batch_size, args.generated_path_prefix
     )
-    aligned_path_lookup = build_aligned_path_lookup(args.alignment_csv)
+    aligned_path_lookup = build_aligned_path_lookup(
+        args.alignment_csv, args.reference_path_prefix
+    )
     reference_embeddings = embed_reference_images(
-        manifest_rows, aligned_path_lookup, model, device, args.batch_size
+        manifest_rows,
+        aligned_path_lookup,
+        model,
+        device,
+        args.batch_size,
+        args.reference_path_prefix,
     )
 
     results = evaluate(
@@ -411,6 +475,8 @@ def main() -> None:
     print(f"Positive-pair threshold: {args.positive_pair_threshold:.6f}")
     if args.alignment_csv is not None:
         print(f"Reference alignment CSV: {args.alignment_csv}")
+    print(f"Generated path prefix: {args.generated_path_prefix}")
+    print(f"Reference path prefix: {args.reference_path_prefix}")
     print_summary(results, args.output_csv)
 
 
